@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
     "@linkchecker/core",
     "@linkchecker/analyzers",
     "@linkchecker/queue",
+    "@linkchecker/ai",
   ],
   webpack: (config) => {
     // The workspace packages use NodeNext-style ".js" import specifiers that

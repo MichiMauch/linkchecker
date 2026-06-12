@@ -6,12 +6,15 @@ import {
   groupByTarget,
   isInternalFinding,
   RunSummary,
+  SoftErrorTable,
   UncheckableLinks,
 } from "../../components.js";
 import {
   getBrokenLinks,
+  getInboundLinkCounts,
   getRun,
   getRunPageCount,
+  getSoftErrors,
   getUncheckableLinks,
 } from "../../lib/queries.js";
 
@@ -23,11 +26,13 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   if (!run) notFound();
 
   const running = run.status === "running";
-  const [broken, uncheckable, liveCount] = await Promise.all([
+  const [broken, uncheckable, softErrors, liveCount] = await Promise.all([
     getBrokenLinks(run.id),
     getUncheckableLinks(run.id),
+    getSoftErrors(run.id),
     running ? getRunPageCount(run.id) : Promise.resolve(run.pagesCrawled),
   ]);
+  const inbound = await getInboundLinkCounts(run.id, softErrors.map((f) => f.url));
   const internalBroken = broken.filter(isInternalFinding);
   const externalBroken = broken.filter((f) => !isInternalFinding(f));
   const internalCount = groupByTarget(internalBroken).length;
@@ -55,6 +60,10 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
       <BrokenLinksTable findings={internalBroken} emptyLabel="Keine internen kaputten Links. 🎉" />
       <h3>Extern ({externalCount})</h3>
       <BrokenLinksTable findings={externalBroken} emptyLabel="Keine externen kaputten Links." />
+
+      <h2>Soft 404 ({softErrors.length})</h2>
+      <SoftErrorTable findings={softErrors} inbound={inbound} />
+
       <UncheckableLinks findings={uncheckable} />
     </>
   );

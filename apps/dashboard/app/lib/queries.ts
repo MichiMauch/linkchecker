@@ -34,6 +34,31 @@ export async function getBrokenLinks(runId: string): Promise<Finding[]> {
     .orderBy(desc(findings.createdAt));
 }
 
+/** Soft-404 findings (pages served 200 but really "not found"). */
+export async function getSoftErrors(runId: string): Promise<Finding[]> {
+  const db = await getDb();
+  return db
+    .select()
+    .from(findings)
+    .where(and(eq(findings.runId, runId), eq(findings.type, "soft-404")))
+    .orderBy(desc(findings.createdAt));
+}
+
+/** How many internal links point at each of the given target URLs. */
+export async function getInboundLinkCounts(
+  runId: string,
+  urls: string[],
+): Promise<Record<string, number>> {
+  if (urls.length === 0) return {};
+  const db = await getDb();
+  const rows = await db
+    .select({ target: links.targetUrl, c: count() })
+    .from(links)
+    .where(and(eq(links.runId, runId), inArray(links.targetUrl, urls)))
+    .groupBy(links.targetUrl);
+  return Object.fromEntries(rows.map((r) => [r.target, r.c]));
+}
+
 /** Links we couldn't verify: bot-blocked (403/999) or unreachable (timeout). */
 export async function getUncheckableLinks(runId: string): Promise<Finding[]> {
   const db = await getDb();

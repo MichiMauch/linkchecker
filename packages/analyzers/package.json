@@ -16,6 +16,7 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@linkchecker/ai": "*",
     "@linkchecker/core": "*",
     "cheerio": "^1.0.0"
   }

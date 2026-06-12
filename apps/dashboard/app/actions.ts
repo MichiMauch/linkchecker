@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { fetchSitemapUrls, normalizeUrl, runCrawl } from "@linkchecker/core";
-import { LinkChecker } from "@linkchecker/analyzers";
+import { defaultAnalyzers } from "@linkchecker/analyzers";
 import { createRun, createSink } from "@linkchecker/db";
 import { enqueueSeed, pingRedis } from "@linkchecker/queue";
 
@@ -82,7 +82,7 @@ async function runInBackground({ runId, target, isSitemap, base, max }: Backgrou
     const stats = await runCrawl({
       startUrls,
       baseUrl: base,
-      analyzers: [new LinkChecker()],
+      analyzers: defaultAnalyzers(),
       concurrency: 10,
       maxPages: max,
       hooks: {

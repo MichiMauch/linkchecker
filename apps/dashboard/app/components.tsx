@@ -186,6 +186,67 @@ export function BrokenLinksTable({
   return <LinkRows groups={groups} badgeClass="error" />;
 }
 
+function detailNumber(detail: Record<string, unknown> | null, key: string): number | undefined {
+  const v = detail?.[key];
+  return typeof v === "number" ? v : undefined;
+}
+
+const METHOD_LABEL: Record<string, string> = {
+  template: "404-Vorlage",
+  heuristic: "Heuristik",
+  llm: "KI (gpt-5.1-mini)",
+};
+
+/** Pages that return 200 but are really "not found" templates. */
+export function SoftErrorTable({
+  findings,
+  inbound,
+}: {
+  findings: Finding[];
+  inbound: Record<string, number>;
+}) {
+  if (findings.length === 0) {
+    return <div className="empty">Keine Soft-404-Seiten gefunden. 🎉</div>;
+  }
+  return (
+    <table>
+      <thead>
+        <tr>
+          <th style={{ width: "90px" }}>Konfidenz</th>
+          <th>Seite (liefert 200, ist aber Fehlerseite)</th>
+          <th style={{ width: "150px" }}>Erkannt durch</th>
+          <th style={{ width: "120px" }}>Eingehende Links</th>
+        </tr>
+      </thead>
+      <tbody>
+        {findings.map((f) => {
+          const conf = detailNumber(f.detail, "confidence");
+          const method = detailString(f.detail, "method") ?? "";
+          const reason = detailString(f.detail, "reason");
+          const count = inbound[f.url] ?? 0;
+          return (
+            <tr key={f.id}>
+              <td>
+                <span className="badge error">{conf != null ? `${Math.round(conf * 100)}%` : "—"}</span>
+              </td>
+              <td>
+                <a className="url" href={f.url} target="_blank" rel="noreferrer">
+                  {f.url}
+                </a>
+                {reason ? <div className="muted">{reason}</div> : null}
+              </td>
+              <td>
+                <span className="badge status">{METHOD_LABEL[method] ?? method}</span>
+              </td>
+              <td>{count > 0 ? `${count} Link${count > 1 ? "s" : ""}` : <span className="muted">—</span>}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 /** Bot-blocked / unreachable links — shown separately, collapsed by default. */
 export function UncheckableLinks({ findings }: { findings: Finding[] }) {
   const groups = groupByTarget(findings);

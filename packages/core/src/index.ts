@@ -6,3 +6,4 @@ export * from "./crawler.js";
 export * from "./sitemap.js";
 export * from "./throttle.js";
 export * from "./robots.js";
+export * from "./soft-error-probe.js";

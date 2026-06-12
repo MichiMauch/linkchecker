@@ -10,7 +10,7 @@ import {
   Throttle,
   type CrawlContext,
 } from "@linkchecker/core";
-import { LinkChecker } from "@linkchecker/analyzers";
+import { defaultAnalyzers } from "@linkchecker/analyzers";
 import { createSink, finalizeRun } from "@linkchecker/db";
 import {
   connection,
@@ -28,7 +28,7 @@ import {
  */
 const redis = connection();
 const queue = crawlQueue();
-const analyzers = [new LinkChecker()];
+const analyzers = defaultAnalyzers();
 
 // Shared across all jobs in this process so per-host limits hold even when many
 // jobs for the same host run concurrently.

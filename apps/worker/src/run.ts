@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { fetchSitemapUrls, runCrawl, type CrawlHooks } from "@linkchecker/core";
-import { LinkChecker } from "@linkchecker/analyzers";
+import { defaultAnalyzers } from "@linkchecker/analyzers";
 import { parseArgs } from "./args.js";
 
 /**
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
   const stats = await runCrawl({
     startUrls,
     baseUrl,
-    analyzers: [new LinkChecker()],
+    analyzers: defaultAnalyzers(),
     concurrency: args.concurrency,
     maxPages: args.max,
     politeness: {
