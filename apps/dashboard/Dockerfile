@@ -29,5 +29,10 @@ ENV HOSTNAME=0.0.0.0
 COPY --from=build /app/apps/dashboard/.next/standalone ./
 COPY --from=build /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
 COPY --from=build /app/apps/dashboard/public ./apps/dashboard/public
+# libsql loads its native binding via a DYNAMIC require that Next's standalone
+# file tracing can't follow, so the platform package is missing. Copy the whole
+# @libsql + libsql trees in explicitly (arch-agnostic).
+COPY --from=build /app/node_modules/@libsql ./node_modules/@libsql
+COPY --from=build /app/node_modules/libsql ./node_modules/libsql
 EXPOSE 3000
 CMD ["node", "apps/dashboard/server.js"]
