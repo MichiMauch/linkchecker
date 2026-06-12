@@ -5,8 +5,8 @@ import OpenAI from "openai";
  *
  * Degrades gracefully: if OPENAI_API_KEY is unset, every call returns null and
  * the caller falls back to deterministic heuristics. Model is configurable via
- * OPENAI_MODEL (default gpt-5.1-mini) so the exact id can be swapped without a
- * code change.
+ * OPENAI_MODEL (default gpt-5-mini) so the exact id can be swapped without a
+ * code change. (Note: gpt-5.1-mini is not generally available; gpt-5-mini is.)
  */
 
 let client: OpenAI | null | undefined;
@@ -46,7 +46,7 @@ export async function classifySoftError(input: SoftErrorInput): Promise<SoftErro
   const c = getClient();
   if (!c) return null;
 
-  const model = process.env.OPENAI_MODEL || "gpt-5.1-mini";
+  const model = process.env.OPENAI_MODEL || "gpt-5-mini";
   const prompt = `${SYSTEM}\n\nURL: ${input.url}\nTITLE: ${input.title}\nTEXT (truncated):\n${input.textSnippet}`;
 
   try {

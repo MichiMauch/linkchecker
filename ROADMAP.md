@@ -22,7 +22,8 @@ Raised 2026-06-12 while scoping the AI features (Soft-404 + fix suggestions).
 
 - **Phase 1 — Soft-404 detection** (in progress): pages that return HTTP 200 but
   are "not found" templates. Probe + heuristics (deterministic) + OpenAI
-  gpt-5.1-mini fallback for the ambiguous band.
+  gpt-5-mini fallback for the ambiguous band (gpt-5.1-mini was requested but is
+  not available on the account; gpt-5-mini works and returns clean JSON).
 - **Phase 2 — Fix suggestions** for broken internal links: lexical prefilter →
   LLM ranks one candidate from the known-good URL set (on-demand, cached).
 - **Phase 3 — Fix export** (see deferred decision above).
