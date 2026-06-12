@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+# BullMQ crawl worker. Build context = repo root.
+
+FROM node:22-alpine
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/core/package.json ./packages/core/
+COPY packages/analyzers/package.json ./packages/analyzers/
+COPY packages/db/package.json ./packages/db/
+COPY packages/queue/package.json ./packages/queue/
+COPY apps/dashboard/package.json ./apps/dashboard/
+COPY apps/worker/package.json ./apps/worker/
+RUN npm ci
+
+COPY . .
+ENV NODE_ENV=production
+# tsx runs the TypeScript worker directly (no separate build step needed).
+CMD ["npx", "tsx", "apps/worker/src/worker.ts"]

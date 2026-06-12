@@ -1,0 +1,39 @@
+# Full stack for Coolify: dashboard + worker + redis.
+# Set DATABASE_URL and DATABASE_AUTH_TOKEN as environment variables in Coolify.
+# Coolify assigns the public domain to the `web` service via SERVICE_FQDN_WEB_3000.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    environment:
+      - SERVICE_FQDN_WEB_3000
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_AUTH_TOKEN=${DATABASE_AUTH_TOKEN}
+      - USE_WORKER=true
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_AUTH_TOKEN=${DATABASE_AUTH_TOKEN}
+      - REDIS_URL=redis://redis:6379
+      - WORKER_CONCURRENCY=10
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  redis-data:
