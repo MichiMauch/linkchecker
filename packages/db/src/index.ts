@@ -10,6 +10,7 @@ export {
   saveFix,
   setFixStatus,
   getFixes,
+  getAcceptedFixes,
   type RunMeta,
   type RunSink,
   type PageCandidate,

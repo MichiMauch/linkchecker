@@ -213,6 +213,20 @@ export async function setFixStatus(
   return row ?? null;
 }
 
+/** Accepted fixes for a run (broken target → confirmed replacement). */
+export async function getAcceptedFixes(
+  runId: string,
+): Promise<Array<{ targetUrl: string; suggestedUrl: string }>> {
+  const db = await getDb();
+  const rows = await db
+    .select({ t: linkFixes.targetUrl, s: linkFixes.suggestedUrl })
+    .from(linkFixes)
+    .where(and(eq(linkFixes.runId, runId), eq(linkFixes.status, "accepted")));
+  return rows
+    .filter((r): r is { t: string; s: string } => !!r.s)
+    .map((r) => ({ targetUrl: r.t, suggestedUrl: r.s }));
+}
+
 /** All cached fixes for a run, keyed by broken target URL. */
 export async function getFixes(runId: string): Promise<Record<string, LinkFix>> {
   const db = await getDb();

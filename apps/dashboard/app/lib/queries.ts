@@ -1,6 +1,7 @@
 import { and, count, desc, eq, inArray } from "drizzle-orm";
-import { getDb, getFixes, schema } from "@linkchecker/db";
+import { getAcceptedFixes, getDb, getFixes, schema } from "@linkchecker/db";
 import { toFixView, type FixView } from "../fix-types.js";
+import type { RedirectPair } from "./redirects.js";
 
 const { runs, findings, links, pages } = schema;
 
@@ -33,6 +34,23 @@ export async function getBrokenLinks(runId: string): Promise<Finding[]> {
     .from(findings)
     .where(and(eq(findings.runId, runId), eq(findings.severity, "error")))
     .orderBy(desc(findings.createdAt));
+}
+
+/** Accepted fixes as redirect path-pairs (for the export). */
+export async function getRedirectPairs(runId: string): Promise<RedirectPair[]> {
+  const fixes = await getAcceptedFixes(runId);
+  return fixes
+    .map((f) => ({ from: toPath(f.targetUrl), to: toPath(f.suggestedUrl) }))
+    .filter((p) => p.from && p.to && p.from !== p.to);
+}
+
+function toPath(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.pathname + u.search;
+  } catch {
+    return url;
+  }
 }
 
 /** Cached fix suggestions for a run, keyed by broken target URL. */

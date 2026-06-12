@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AutoRefresh } from "../../auto-refresh.js";
+import { ExportFixes } from "../../export-fixes.js";
 import {
   BrokenLinksTable,
   groupByTarget,
@@ -13,6 +14,7 @@ import {
   getBrokenLinks,
   getFixViews,
   getInboundLinkCounts,
+  getRedirectPairs,
   getRun,
   getRunPageCount,
   getSoftErrors,
@@ -35,6 +37,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   ]);
   const inbound = await getInboundLinkCounts(run.id, softErrors.map((f) => f.url));
   const fixes = await getFixViews(run.id);
+  const redirects = await getRedirectPairs(run.id);
   const internalBroken = broken.filter(isInternalFinding);
   const externalBroken = broken.filter((f) => !isInternalFinding(f));
   const internalCount = groupByTarget(internalBroken).length;
@@ -67,6 +70,14 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
       />
       <h3>Extern ({externalCount})</h3>
       <BrokenLinksTable findings={externalBroken} emptyLabel="Keine externen kaputten Links." />
+
+      {redirects.length > 0 ? (
+        <>
+          <h2>Redirect-Export ({redirects.length})</h2>
+          <p className="muted">Aus den übernommenen Fixes — wähle das Format für deinen Stack.</p>
+          <ExportFixes pairs={redirects} />
+        </>
+      ) : null}
 
       <h2>Soft 404 ({softErrors.length})</h2>
       <SoftErrorTable findings={softErrors} inbound={inbound} />

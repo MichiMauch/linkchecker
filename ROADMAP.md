@@ -28,7 +28,11 @@ Raised 2026-06-12 while scoping the AI features (Soft-404 + fix suggestions).
   "Fix vorschlagen" button. Lexical prefilter → trivial-match shortcut → gpt-5-
   mini ranks one candidate from the known-good URL set. Accept/reject stored in
   `link_fixes` (feeds Phase 3). Returns "no match" rather than inventing.
-- **Phase 3 — Fix export** (see deferred decision above).
+- **Phase 3 — Fix export** (done as redirect export): accepted fixes export as
+  Next.js / nginx / Apache / Netlify / CSV redirect configs (copy or download).
+  **Drupal/CMS write-back is still deferred** (see decision above) — the redirect
+  export is the low-risk 80% solution; write-back into the CMS content remains
+  the bigger, optional follow-up.
 
 ## Other backlog
 
