@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { authEnabled, COOKIE_NAME, sessionToken } from "./lib/auth.js";
+import { logout } from "./login/actions.js";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -7,7 +10,14 @@ export const metadata: Metadata = {
   description: "Broken-link monitoring dashboard",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+async function isLoggedIn(): Promise<boolean> {
+  if (!authEnabled()) return false;
+  const cookie = (await cookies()).get(COOKIE_NAME)?.value;
+  return !!cookie && cookie === (await sessionToken());
+}
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const loggedIn = await isLoggedIn();
   return (
     <html lang="de">
       <body>
@@ -19,6 +29,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </Link>
             </h1>
             <span className="tag">Broken-Link-Monitoring</span>
+            {loggedIn ? (
+              <form action={logout} style={{ marginLeft: "auto" }}>
+                <button className="fix-btn ghost" type="submit">
+                  Logout
+                </button>
+              </form>
+            ) : null}
           </div>
         </header>
         <main className="container">{children}</main>

@@ -12,6 +12,8 @@ services:
       - DATABASE_AUTH_TOKEN=${DATABASE_AUTH_TOKEN}
       - USE_WORKER=true
       - REDIS_URL=redis://redis:6379
+      - DASHBOARD_PASSWORD=${DASHBOARD_PASSWORD}
+      - AUTH_SECRET=${AUTH_SECRET}
     depends_on:
       - redis
     restart: unless-stopped
