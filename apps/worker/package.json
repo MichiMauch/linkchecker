@@ -1,0 +1,21 @@
+{
+  "name": "@linkchecker/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b",
+    "crawl": "tsx src/run.ts",
+    "worker": "tsx src/worker.ts",
+    "seed": "tsx src/seed.ts"
+  },
+  "dependencies": {
+    "@linkchecker/analyzers": "*",
+    "@linkchecker/core": "*",
+    "@linkchecker/db": "*",
+    "bullmq": "^5.34.5",
+    "dotenv": "^16.4.7",
+    "ioredis": "5.10.1"
+  }
+}

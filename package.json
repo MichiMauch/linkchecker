@@ -1,0 +1,34 @@
+{
+  "name": "linkchecker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b",
+    "crawl": "tsx apps/worker/src/run.ts",
+    "worker": "tsx apps/worker/src/worker.ts",
+    "seed": "tsx apps/worker/src/seed.ts",
+    "dashboard": "npm run dev -w @linkchecker/dashboard",
+    "dashboard:build": "npm run build -w @linkchecker/dashboard",
+    "db:generate": "npm run db:generate -w @linkchecker/db",
+    "db:migrate": "npm run db:migrate -w @linkchecker/db",
+    "db:push": "npm run db:push -w @linkchecker/db",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "overrides": {
+    "ioredis": "5.10.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

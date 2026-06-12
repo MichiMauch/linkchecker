@@ -1,0 +1,24 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.env
+.env.local
+.DS_Store
+drizzle/meta/_journal.json.bak
+
+# stray TS emit in package roots
+packages/*/*.js
+packages/*/*.d.ts
+packages/*/*.d.ts.map
+!*.config.js
+
+# next.js
+.next/
+next-env.d.ts
+*.local
+
+# local sqlite db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm

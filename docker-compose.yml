@@ -1,0 +1,17 @@
+# OPTIONAL — you do NOT need this for normal use.
+# The database is a local SQLite file (or Turso in production); no container
+# required. This only provides Redis for the optional distributed crawl worker
+# (apps/worker/src/worker.ts), useful when crawling very large sites across
+# multiple worker processes.
+#
+#   docker compose up -d redis
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  redisdata:
