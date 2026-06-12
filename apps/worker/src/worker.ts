@@ -2,10 +2,13 @@ import "dotenv/config";
 import { Worker } from "bullmq";
 import { Redis } from "ioredis";
 import {
+  hostOf,
   isInternalUrl,
   normalizeUrl,
   processPage,
+  RobotsGate,
   StatusChecker,
+  Throttle,
   type CrawlContext,
 } from "@linkchecker/core";
 import { LinkChecker } from "@linkchecker/analyzers";
@@ -21,12 +24,17 @@ import { connection, CRAWL_QUEUE, crawlQueue, REDIS_URL, seenKey, type CrawlJob 
 const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
 const analyzers = [new LinkChecker()];
 
+// Shared across all jobs in this process → per-host limits hold even when many
+// jobs for the same host run concurrently.
+const throttle = new Throttle();
+const robots = new RobotsGate();
+
 const worker = new Worker<CrawlJob, unknown, string>(
   CRAWL_QUEUE,
   async (job) => {
     const { runId, url, baseUrl } = job.data;
     const base = new URL(baseUrl);
-    const statusChecker = new StatusChecker();
+    const statusChecker = new StatusChecker({}, throttle);
     const ctx: CrawlContext = {
       baseUrl: base.toString(),
       isInternal: (u) => isInternalUrl(u, base),
@@ -35,7 +43,16 @@ const worker = new Worker<CrawlJob, unknown, string>(
     };
     const sink = createSink(runId);
 
-    const { page, results } = await processPage(url, analyzers, ctx);
+    // Respect robots.txt (Crawl-delay + disallow) before fetching.
+    const rules = await robots.get(url);
+    if (rules.crawlDelay && rules.crawlDelay > 0) {
+      throttle.setHostDelay(hostOf(url), rules.crawlDelay * 1000);
+    }
+    if (!rules.isAllowed(url)) {
+      return { url, skipped: true };
+    }
+
+    const { page, results } = await processPage(url, analyzers, ctx, {}, throttle);
     await sink.page(page);
 
     for (const { result } of results) {

@@ -4,3 +4,5 @@ export * from "./fetcher.js";
 export * from "./status-checker.js";
 export * from "./crawler.js";
 export * from "./sitemap.js";
+export * from "./throttle.js";
+export * from "./robots.js";

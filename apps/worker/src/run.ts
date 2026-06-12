@@ -50,11 +50,19 @@ async function main(): Promise<void> {
     analyzers: [new LinkChecker()],
     concurrency: args.concurrency,
     maxPages: args.max,
+    politeness: {
+      perHostConcurrency: args.perHost,
+      minHostDelayMs: args.delay,
+      respectRobots: !args.noRobots,
+    },
     hooks,
   });
 
   await sink?.finish(stats);
-  console.log(`\nDone. ${stats.pages} pages crawled, ${stats.findings} findings.`);
+  console.log(
+    `\nDone. ${stats.pages} pages crawled, ${stats.findings} findings` +
+      `${stats.skipped > 0 ? `, ${stats.skipped} skipped (robots.txt)` : ""}.`,
+  );
   if (sink) console.log(`Run id: ${sink.runId}`);
   process.exit(0);
 }

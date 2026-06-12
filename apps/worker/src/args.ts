@@ -6,6 +6,9 @@ export interface CliArgs {
   max: number;
   concurrency: number;
   noDb: boolean;
+  perHost?: number;
+  delay?: number;
+  noRobots: boolean;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -13,6 +16,7 @@ export function parseArgs(argv: string[]): CliArgs {
     max: Number.POSITIVE_INFINITY,
     concurrency: 10,
     noDb: false,
+    noRobots: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
@@ -34,6 +38,15 @@ export function parseArgs(argv: string[]): CliArgs {
         break;
       case "--no-db":
         args.noDb = true;
+        break;
+      case "--per-host":
+        args.perHost = Number(argv[++i]);
+        break;
+      case "--delay":
+        args.delay = Number(argv[++i]);
+        break;
+      case "--no-robots":
+        args.noRobots = true;
         break;
       default:
         throw new Error(`Unknown argument: ${a}`);

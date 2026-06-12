@@ -95,11 +95,24 @@ export class SeoAnalyzer implements Analyzer {
 Register it in the analyzer list in `apps/worker/src/run.ts` / `worker.ts`.
 Its findings land in the same `findings` table, tagged by `analyzer`.
 
+## Politeness (rate limiting & robots.txt)
+
+Crawls are polite by default: per-host concurrency is capped, requests to the
+same host are spaced out, and `robots.txt` is fetched per origin (disallow
+rules are honored, `Crawl-delay` raises the per-host delay). Tune via CLI:
+
+```bash
+npm run crawl -- --url https://your-site.com \
+  --per-host 3 \      # max concurrent requests to one host (default 3)
+  --delay 100 \       # min ms between requests to one host (default 100)
+  --no-robots         # ignore robots.txt (default: respect it)
+```
+
+In code, pass a `politeness` block to `runCrawl({ politeness: { … } })`.
+
 ## Roadmap / next steps
 
-- Next.js dashboard (`apps/dashboard`) — broken-link report, trends across runs
 - Incremental crawls (sitemap `lastmod` diff + rotating external recheck)
-- Per-host rate limiting & `robots.txt` politeness
 - Cross-worker external-status cache in Redis
 - Alerts (email/Slack) when new broken links appear between runs
 - Scheduling (BullMQ repeatable jobs or cron)
