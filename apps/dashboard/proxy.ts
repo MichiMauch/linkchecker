@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { authEnabled, COOKIE_NAME, sessionToken } from "./app/lib/auth.js";
 
-export async function middleware(req: NextRequest) {
+// Next.js 16: the former `middleware.ts` is now `proxy.ts` (Node.js runtime).
+export async function proxy(req: NextRequest) {
   if (!authEnabled()) return NextResponse.next();
 
   // The login page (and its server action) must stay reachable without a cookie.

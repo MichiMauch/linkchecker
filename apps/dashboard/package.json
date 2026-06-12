@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "next dev --webpack",
+    "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
@@ -15,12 +15,12 @@
     "@linkchecker/db": "*",
     "@linkchecker/queue": "*",
     "drizzle-orm": "^0.38.3",
-    "next": "^15.1.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "next": "^16.2.9",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
   },
   "devDependencies": {
-    "@types/react": "^19.0.2",
-    "@types/react-dom": "^19.0.2"
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0"
   }
 }
