@@ -24,8 +24,10 @@ Raised 2026-06-12 while scoping the AI features (Soft-404 + fix suggestions).
   are "not found" templates. Probe + heuristics (deterministic) + OpenAI
   gpt-5-mini fallback for the ambiguous band (gpt-5.1-mini was requested but is
   not available on the account; gpt-5-mini works and returns clean JSON).
-- **Phase 2 — Fix suggestions** for broken internal links: lexical prefilter →
-  LLM ranks one candidate from the known-good URL set (on-demand, cached).
+- **Phase 2 — Fix suggestions** (done): broken internal links get an on-demand
+  "Fix vorschlagen" button. Lexical prefilter → trivial-match shortcut → gpt-5-
+  mini ranks one candidate from the known-good URL set. Accept/reject stored in
+  `link_fixes` (feeds Phase 3). Returns "no match" rather than inventing.
 - **Phase 3 — Fix export** (see deferred decision above).
 
 ## Other backlog

@@ -2,7 +2,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createClient } from "@libsql/client";
 import { drizzle, type LibSQLDatabase } from "drizzle-orm/libsql";
-import { SCHEMA_DDL } from "./ddl.js";
+import { MIGRATIONS, SCHEMA_DDL } from "./ddl.js";
 import * as schema from "./schema.js";
 
 export type DB = LibSQLDatabase<typeof schema>;
@@ -37,5 +37,13 @@ async function init(): Promise<DB> {
   const authToken = process.env.DATABASE_AUTH_TOKEN;
   const client = createClient({ url, authToken });
   await client.executeMultiple(SCHEMA_DDL);
+  // Additive column migrations for pre-existing databases (ignore if present).
+  for (const stmt of MIGRATIONS) {
+    try {
+      await client.execute(stmt);
+    } catch {
+      // column already exists — nothing to do
+    }
+  }
   return drizzle(client, { schema });
 }

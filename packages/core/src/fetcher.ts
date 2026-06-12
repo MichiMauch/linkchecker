@@ -72,8 +72,10 @@ export async function fetchPage(url: string, opts: FetchOptions = {}): Promise<F
     const r = await rawRequest(url, "GET", opts);
     const contentType = headerStr(r.headers["content-type"]);
     let body = "";
+    let title: string | undefined;
     if (isHtmlType(contentType)) {
       body = await r.body.text();
+      title = extractTitle(body);
     } else {
       await r.body.dump();
     }
@@ -84,6 +86,7 @@ export async function fetchPage(url: string, opts: FetchOptions = {}): Promise<F
       ok: r.status >= 200 && r.status < 400,
       contentType,
       body,
+      title,
       redirectChain: r.redirectChain,
       fetchedAt,
     };
@@ -128,6 +131,22 @@ export async function checkStatus(url: string, opts: FetchOptions = {}): Promise
 
 export function isHtmlType(contentType: string | null): boolean {
   return !!contentType && /text\/html|application\/xhtml/i.test(contentType);
+}
+
+function extractTitle(html: string): string | undefined {
+  const m = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  if (!m) return undefined;
+  const text = m[1]!
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+  return text || undefined;
 }
 
 function headerStr(v: string | string[] | undefined): string | null {

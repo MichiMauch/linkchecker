@@ -11,6 +11,7 @@ import {
 } from "./components.js";
 import {
   getBrokenLinks,
+  getFixViews,
   getInboundLinkCounts,
   getLatestRun,
   getRecentRuns,
@@ -55,6 +56,7 @@ async function LatestRun() {
     running ? getRunPageCount(latest.id) : Promise.resolve(latest.pagesCrawled),
   ]);
   const inbound = await getInboundLinkCounts(latest.id, softErrors.map((f) => f.url));
+  const fixes = await getFixViews(latest.id);
   const internalBroken = broken.filter(isInternalFinding);
   const externalBroken = broken.filter((f) => !isInternalFinding(f));
   const internalCount = groupByTarget(internalBroken).length;
@@ -76,7 +78,12 @@ async function LatestRun() {
 
       <h2>Kaputte Links ({brokenCount})</h2>
       <h3>Intern ({internalCount})</h3>
-      <BrokenLinksTable findings={internalBroken} emptyLabel="Keine internen kaputten Links. 🎉" />
+      <BrokenLinksTable
+        findings={internalBroken}
+        emptyLabel="Keine internen kaputten Links. 🎉"
+        runId={latest.id}
+        fixes={fixes}
+      />
       <h3>Extern ({externalCount})</h3>
       <BrokenLinksTable findings={externalBroken} emptyLabel="Keine externen kaputten Links." />
 

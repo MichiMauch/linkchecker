@@ -1,7 +1,13 @@
-import { count, eq } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import type { AnalyzerResult, FetchedPage } from "@linkchecker/core";
 import { getDb } from "./client.js";
-import { findings as findingsTable, links as linksTable, pages, runs } from "./schema.js";
+import {
+  findings as findingsTable,
+  linkFixes,
+  links as linksTable,
+  pages,
+  runs,
+} from "./schema.js";
 
 export interface RunMeta {
   baseUrl: string;
@@ -30,6 +36,7 @@ export function createSink(runId: string) {
         runId,
         url: p.url,
         finalUrl: p.finalUrl,
+        title: p.title ?? null,
         status: p.status,
         ok: p.ok,
         contentType: p.contentType,
@@ -61,6 +68,7 @@ export function createSink(runId: string) {
             targetUrl: l.target,
             internal: l.internal,
             rel: l.rel ?? null,
+            anchorText: l.anchorText ?? null,
             status: l.status ?? null,
             ok: l.ok ?? null,
             redirectChain: l.redirectChain ?? null,
@@ -118,4 +126,96 @@ export async function finalizeRun(runId: string): Promise<void> {
       findingsCount: f?.n ?? 0,
     })
     .where(eq(runs.id, runId));
+}
+
+// --- Phase 2: fix suggestions for broken internal links -------------------
+
+export interface PageCandidate {
+  url: string;
+  title: string | null;
+}
+
+export interface FixResultInput {
+  suggestedUrl: string | null;
+  confidence: number;
+  reason: string;
+  method: string;
+}
+
+export type LinkFix = typeof linkFixes.$inferSelect;
+
+/** Live, real internal pages for a run (ok=true, excluding soft-404 pages). */
+export async function getValidPages(runId: string): Promise<PageCandidate[]> {
+  const db = await getDb();
+  const soft = await db
+    .select({ u: findingsTable.url })
+    .from(findingsTable)
+    .where(and(eq(findingsTable.runId, runId), eq(findingsTable.type, "soft-404")));
+  const softSet = new Set(soft.map((s) => s.u));
+  const rows = await db
+    .select({ url: pages.url, title: pages.title })
+    .from(pages)
+    .where(and(eq(pages.runId, runId), eq(pages.ok, true)));
+  return rows.filter((r) => !softSet.has(r.url)).map((r) => ({ url: r.url, title: r.title }));
+}
+
+/** Distinct anchor texts used to link to a target (the link's intent). */
+export async function getAnchorTexts(runId: string, target: string): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db
+    .select({ a: linksTable.anchorText })
+    .from(linksTable)
+    .where(and(eq(linksTable.runId, runId), eq(linksTable.targetUrl, target)));
+  const set = new Set<string>();
+  for (const r of rows) if (r.a) set.add(r.a);
+  return [...set].slice(0, 10);
+}
+
+export async function getCachedFix(runId: string, target: string): Promise<LinkFix | null> {
+  const db = await getDb();
+  const [row] = await db
+    .select()
+    .from(linkFixes)
+    .where(and(eq(linkFixes.runId, runId), eq(linkFixes.targetUrl, target)))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function saveFix(runId: string, target: string, r: FixResultInput): Promise<LinkFix> {
+  const db = await getDb();
+  await db.delete(linkFixes).where(and(eq(linkFixes.runId, runId), eq(linkFixes.targetUrl, target)));
+  const [row] = await db
+    .insert(linkFixes)
+    .values({
+      runId,
+      targetUrl: target,
+      suggestedUrl: r.suggestedUrl,
+      confidence: r.confidence,
+      reason: r.reason,
+      method: r.method,
+      status: "suggested",
+    })
+    .returning();
+  return row!;
+}
+
+export async function setFixStatus(
+  runId: string,
+  target: string,
+  status: "accepted" | "rejected" | "suggested",
+): Promise<LinkFix | null> {
+  const db = await getDb();
+  const [row] = await db
+    .update(linkFixes)
+    .set({ status })
+    .where(and(eq(linkFixes.runId, runId), eq(linkFixes.targetUrl, target)))
+    .returning();
+  return row ?? null;
+}
+
+/** All cached fixes for a run, keyed by broken target URL. */
+export async function getFixes(runId: string): Promise<Record<string, LinkFix>> {
+  const db = await getDb();
+  const rows = await db.select().from(linkFixes).where(eq(linkFixes.runId, runId));
+  return Object.fromEntries(rows.map((r) => [r.targetUrl, r]));
 }

@@ -242,6 +242,26 @@ button:disabled {
   opacity: 0.6;
 }
 
+/* Fix-suggestion cell */
+.fix {
+  font-size: 0.85rem;
+}
+.fix-actions {
+  margin-top: 0.4rem;
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.fix-btn {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.fix-btn.ghost {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
 /* Status badges */
 .badge.run-running {
   background: #2a2410;

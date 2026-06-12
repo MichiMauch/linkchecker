@@ -1,5 +1,6 @@
 import { and, count, desc, eq, inArray } from "drizzle-orm";
-import { getDb, schema } from "@linkchecker/db";
+import { getDb, getFixes, schema } from "@linkchecker/db";
+import { toFixView, type FixView } from "../fix-types.js";
 
 const { runs, findings, links, pages } = schema;
 
@@ -32,6 +33,12 @@ export async function getBrokenLinks(runId: string): Promise<Finding[]> {
     .from(findings)
     .where(and(eq(findings.runId, runId), eq(findings.severity, "error")))
     .orderBy(desc(findings.createdAt));
+}
+
+/** Cached fix suggestions for a run, keyed by broken target URL. */
+export async function getFixViews(runId: string): Promise<Record<string, FixView>> {
+  const raw = await getFixes(runId);
+  return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, toFixView(v)]));
 }
 
 /** Soft-404 findings (pages served 200 but really "not found"). */

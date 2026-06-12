@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS pages (
   run_id text NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
   url text NOT NULL,
   final_url text,
+  title text,
   status integer,
   ok integer,
   content_type text,
@@ -37,6 +38,7 @@ CREATE TABLE IF NOT EXISTS links (
   target_url text NOT NULL,
   internal integer NOT NULL,
   rel text,
+  anchor_text text,
   status integer,
   ok integer,
   redirect_chain text,
@@ -57,4 +59,26 @@ CREATE TABLE IF NOT EXISTS findings (
   created_at integer NOT NULL
 );
 CREATE INDEX IF NOT EXISTS findings_run_idx ON findings (run_id, analyzer);
+
+CREATE TABLE IF NOT EXISTS link_fixes (
+  id text PRIMARY KEY NOT NULL,
+  run_id text NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+  target_url text NOT NULL,
+  suggested_url text,
+  confidence real,
+  reason text,
+  method text NOT NULL,
+  status text NOT NULL DEFAULT 'suggested',
+  created_at integer NOT NULL
+);
+CREATE INDEX IF NOT EXISTS link_fixes_run_idx ON link_fixes (run_id, target_url);
 `;
+
+/**
+ * Idempotent column additions for databases created before these columns
+ * existed. Each runs separately and ignores "duplicate column" errors.
+ */
+export const MIGRATIONS = [
+  "ALTER TABLE pages ADD COLUMN title text",
+  "ALTER TABLE links ADD COLUMN anchor_text text",
+];

@@ -1,4 +1,4 @@
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 const uuid = () => text("id").primaryKey().$defaultFn(() => crypto.randomUUID());
 const now = () => new Date();
@@ -25,6 +25,7 @@ export const pages = sqliteTable(
       .references(() => runs.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
     finalUrl: text("final_url"),
+    title: text("title"),
     status: integer("status"),
     ok: integer("ok", { mode: "boolean" }),
     contentType: text("content_type"),
@@ -47,6 +48,7 @@ export const links = sqliteTable(
     targetUrl: text("target_url").notNull(),
     internal: integer("internal", { mode: "boolean" }).notNull(),
     rel: text("rel"),
+    anchorText: text("anchor_text"),
     status: integer("status"),
     ok: integer("ok", { mode: "boolean" }),
     redirectChain: text("redirect_chain", { mode: "json" }).$type<string[]>(),
@@ -76,4 +78,27 @@ export const findings = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(now),
   },
   (t) => [index("findings_run_idx").on(t.runId, t.analyzer)],
+);
+
+/**
+ * Cached fix suggestions for broken internal links (Phase 2). One row per
+ * (run, broken target). `status` tracks the user's accept/reject so Phase 3
+ * (redirect/CMS export) can read the confirmed set.
+ */
+export const linkFixes = sqliteTable(
+  "link_fixes",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    runId: text("run_id")
+      .notNull()
+      .references(() => runs.id, { onDelete: "cascade" }),
+    targetUrl: text("target_url").notNull(),
+    suggestedUrl: text("suggested_url"),
+    confidence: real("confidence"),
+    reason: text("reason"),
+    method: text("method").notNull(), // lexical | llm | none
+    status: text("status").notNull().default("suggested"), // suggested | accepted | rejected
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().$defaultFn(() => new Date()),
+  },
+  (t) => [index("link_fixes_run_idx").on(t.runId, t.targetUrl)],
 );

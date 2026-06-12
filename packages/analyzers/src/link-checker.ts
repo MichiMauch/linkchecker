@@ -41,23 +41,28 @@ export class LinkChecker implements Analyzer {
   async analyze(page: FetchedPage, ctx: CrawlContext): Promise<AnalyzerResult> {
     const $ = cheerio.load(page.body);
 
-    // target URL -> rel attribute (first occurrence wins; dedup per page)
-    const targets = new Map<string, string | null>();
+    // target URL -> { rel, anchor } (first occurrence wins; dedup per page)
+    const targets = new Map<string, { rel: string | null; anchor: string }>();
     for (const { selector, attr } of this.selectors) {
       $(selector).each((_, el) => {
         const raw = $(el).attr(attr);
         if (!raw) return;
         const target = normalizeUrl(raw, page.finalUrl);
         if (!target) return; // skips mailto:, tel:, javascript:, #fragments
-        if (!targets.has(target)) targets.set(target, $(el).attr("rel") ?? null);
+        if (!targets.has(target)) {
+          targets.set(target, {
+            rel: $(el).attr("rel") ?? null,
+            anchor: ($(el).text() || "").replace(/\s+/g, " ").trim().slice(0, 200),
+          });
+        }
       });
     }
 
     const checked = await Promise.all(
-      [...targets.entries()].map(async ([target, rel]) => {
+      [...targets.entries()].map(async ([target, meta]) => {
         const internal = ctx.isInternal(target);
         const status = await ctx.checkStatus(target);
-        return { target, rel, internal, status };
+        return { target, rel: meta.rel, anchor: meta.anchor, internal, status };
       }),
     );
 
@@ -65,12 +70,13 @@ export class LinkChecker implements Analyzer {
     const findings: Finding[] = [];
     const discoveredUrls: string[] = [];
 
-    for (const { target, rel, internal, status } of checked) {
+    for (const { target, rel, anchor, internal, status } of checked) {
       links.push({
         source: page.url,
         target,
         internal,
         rel,
+        anchorText: anchor || null,
         status: status.status,
         ok: status.ok,
         redirectChain: status.redirectChain,

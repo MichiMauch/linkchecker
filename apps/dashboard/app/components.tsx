@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { startCrawl } from "./actions.js";
+import { FixSuggestion } from "./fix-suggestion.js";
+import type { FixView } from "./fix-types.js";
 import type { Finding, Run } from "./lib/queries.js";
 
 export function NewCrawlForm() {
@@ -122,14 +124,26 @@ export function groupByTarget(findings: Finding[]): GroupedLink[] {
   return [...map.values()].sort((a, b) => b.sources.length - a.sources.length);
 }
 
-function LinkRows({ groups, badgeClass }: { groups: GroupedLink[]; badgeClass: string }) {
+function LinkRows({
+  groups,
+  badgeClass,
+  runId,
+  fixes,
+}: {
+  groups: GroupedLink[];
+  badgeClass: string;
+  runId?: string;
+  fixes?: Record<string, FixView>;
+}) {
+  const showFix = !!runId;
   return (
     <table>
       <thead>
         <tr>
           <th style={{ width: "70px" }}>Status</th>
           <th>Ziel-Link</th>
-          <th style={{ width: "160px" }}>Betroffene Seiten</th>
+          <th style={{ width: "140px" }}>Betroffene Seiten</th>
+          {showFix ? <th style={{ width: "280px" }}>Fix-Vorschlag</th> : null}
         </tr>
       </thead>
       <tbody>
@@ -160,6 +174,11 @@ function LinkRows({ groups, badgeClass }: { groups: GroupedLink[]; badgeClass: s
                 </ul>
               </details>
             </td>
+            {showFix ? (
+              <td>
+                <FixSuggestion runId={runId!} target={g.target} initial={fixes?.[g.target] ?? null} />
+              </td>
+            ) : null}
           </tr>
         ))}
       </tbody>
@@ -175,15 +194,20 @@ export function isInternalFinding(f: Finding): boolean {
 export function BrokenLinksTable({
   findings,
   emptyLabel = "Keine kaputten Links gefunden. 🎉",
+  runId,
+  fixes,
 }: {
   findings: Finding[];
   emptyLabel?: string;
+  /** When set, each row gets an on-demand "Fix vorschlagen" action. */
+  runId?: string;
+  fixes?: Record<string, FixView>;
 }) {
   const groups = groupByTarget(findings);
   if (groups.length === 0) {
     return <div className="empty">{emptyLabel}</div>;
   }
-  return <LinkRows groups={groups} badgeClass="error" />;
+  return <LinkRows groups={groups} badgeClass="error" runId={runId} fixes={fixes} />;
 }
 
 function detailNumber(detail: Record<string, unknown> | null, key: string): number | undefined {

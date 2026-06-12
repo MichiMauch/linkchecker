@@ -21,6 +21,8 @@ export interface FetchedPage {
   contentType: string | null;
   /** Response body — only populated for HTML/text, empty otherwise. */
   body: string;
+  /** <title> of the page, if HTML. Used for fix-suggestion matching. */
+  title?: string;
   /** Intermediate URLs encountered while following redirects. */
   redirectChain: string[];
   fetchedAt: Date;
@@ -49,6 +51,8 @@ export interface LinkEdge {
   target: string;
   internal: boolean;
   rel: string | null;
+  /** Visible link text — the semantic intent, used for fix suggestions. */
+  anchorText?: string | null;
   status?: number | null;
   ok?: boolean | null;
   redirectChain?: string[];
