@@ -4,20 +4,19 @@
 FROM node:22-alpine AS base
 WORKDIR /app
 
-# --- deps: install with the full workspace manifest set ---
-FROM base AS deps
+# --- build: install + produce .next/standalone in one stage so that whatever
+# npm hoists/nests (e.g. Next 16 may nest `next` under apps/dashboard) is all
+# present when the build runs. ---
+FROM base AS build
 COPY package.json package-lock.json ./
 COPY packages/core/package.json ./packages/core/
+COPY packages/ai/package.json ./packages/ai/
 COPY packages/analyzers/package.json ./packages/analyzers/
 COPY packages/db/package.json ./packages/db/
 COPY packages/queue/package.json ./packages/queue/
 COPY apps/dashboard/package.json ./apps/dashboard/
 COPY apps/worker/package.json ./apps/worker/
 RUN npm ci
-
-# --- build: produce .next/standalone ---
-FROM base AS build
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build -w @linkchecker/dashboard
 
