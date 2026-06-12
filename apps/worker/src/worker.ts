@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { Worker } from "bullmq";
-import { Redis } from "ioredis";
 import {
   hostOf,
   isInternalUrl,
@@ -12,19 +11,26 @@ import {
   type CrawlContext,
 } from "@linkchecker/core";
 import { LinkChecker } from "@linkchecker/analyzers";
-import { createSink } from "@linkchecker/db";
-import { connection, CRAWL_QUEUE, crawlQueue, REDIS_URL, seenKey, type CrawlJob } from "./queue.js";
+import { createSink, finalizeRun } from "@linkchecker/db";
+import {
+  connection,
+  crawlQueue,
+  CRAWL_QUEUE,
+  keys,
+  type CrawlJob,
+} from "@linkchecker/queue";
 
 /**
  * Distributed crawler. Each job = one page. Run many of these processes (even
- * across machines); they share the frontier via Redis. Discovered internal
- * URLs are deduped with an atomic SADD before being enqueued, so the same page
- * is never crawled twice. Seed a run with `npm run seed`.
+ * across machines); they share the frontier and a per-run completion counter
+ * via Redis, so the run is marked "done" exactly once when the queue drains.
+ * Seed a run from the dashboard (USE_WORKER=true) or with `npm run seed`.
  */
-const redis = new Redis(REDIS_URL, { maxRetriesPerRequest: null });
+const redis = connection();
+const queue = crawlQueue();
 const analyzers = [new LinkChecker()];
 
-// Shared across all jobs in this process → per-host limits hold even when many
+// Shared across all jobs in this process so per-host limits hold even when many
 // jobs for the same host run concurrently.
 const throttle = new Throttle();
 const robots = new RobotsGate();
@@ -43,43 +49,60 @@ const worker = new Worker<CrawlJob, unknown, string>(
     };
     const sink = createSink(runId);
 
-    // Respect robots.txt (Crawl-delay + disallow) before fetching.
-    const rules = await robots.get(url);
-    if (rules.crawlDelay && rules.crawlDelay > 0) {
-      throttle.setHostDelay(hostOf(url), rules.crawlDelay * 1000);
-    }
-    if (!rules.isAllowed(url)) {
-      return { url, skipped: true };
-    }
+    try {
+      // robots.txt: skip disallowed pages, honor Crawl-delay.
+      const rules = await robots.get(url);
+      if (rules.crawlDelay && rules.crawlDelay > 0) {
+        throttle.setHostDelay(hostOf(url), rules.crawlDelay * 1000);
+      }
+      if (!rules.isAllowed(url)) return { url, skipped: true };
 
-    const { page, results } = await processPage(url, analyzers, ctx, {}, throttle);
-    await sink.page(page);
+      const { page, results } = await processPage(url, analyzers, ctx, {}, throttle);
+      await sink.page(page);
+      await redis.incr(keys.crawled(runId));
 
-    for (const { result } of results) {
-      await sink.result(page, result);
-      for (const next of result.discoveredUrls) {
-        if (!ctx.isInternal(next)) continue;
-        const n = normalizeUrl(next, base.toString());
-        if (!n) continue;
-        // SADD returns 1 only the first time this URL is seen in the run.
-        const isNew = await redis.sadd(seenKey(runId), n);
-        if (isNew === 1) {
-          await crawlQueue.add(
-            "crawl",
-            { runId, url: n, baseUrl },
-            { removeOnComplete: true, removeOnFail: 1000 },
-          );
+      const max = Number((await redis.get(keys.max(runId))) ?? Number.POSITIVE_INFINITY);
+      const crawled = Number((await redis.get(keys.crawled(runId))) ?? 0);
+
+      let childrenAdded = 0;
+      if (crawled < max) {
+        for (const { result } of results) {
+          await sink.result(page, result);
+          for (const next of result.discoveredUrls) {
+            if (!ctx.isInternal(next)) continue;
+            const n = normalizeUrl(next, base.toString());
+            if (!n) continue;
+            if ((await redis.sadd(keys.seen(runId), n)) === 1) {
+              await queue.add(
+                "crawl",
+                { runId, url: n, baseUrl },
+                { removeOnComplete: true, removeOnFail: 1000 },
+              );
+              childrenAdded++;
+            }
+          }
         }
+      } else {
+        // At the page limit: still persist findings, just don't expand further.
+        for (const { result } of results) await sink.result(page, result);
+      }
+
+      if (childrenAdded > 0) await redis.incrby(keys.pending(runId), childrenAdded);
+      return { url, findings: results.reduce((s, r) => s + r.result.findings.length, 0) };
+    } finally {
+      // This job is done — decrement and, if the run drained, finalize once.
+      const remaining = await redis.decr(keys.pending(runId));
+      if (remaining <= 0 && (await redis.setnx(keys.done(runId), "1")) === 1) {
+        await finalizeRun(runId);
+        await redis.del(keys.seen(runId), keys.pending(runId), keys.crawled(runId), keys.max(runId));
+        await redis.expire(keys.done(runId), 3600);
+        console.log(`✓ run ${runId} complete`);
       }
     }
-    return { url, findings: results.reduce((s, r) => s + r.result.findings.length, 0) };
   },
-  { connection, concurrency: Number(process.env.WORKER_CONCURRENCY ?? 10) },
+  { connection: redis, concurrency: Number(process.env.WORKER_CONCURRENCY ?? 10) },
 );
 
-worker.on("completed", (job) => {
-  console.log(`  ✓ ${job.data.url}`);
-});
 worker.on("failed", (job, err) => {
   console.error(`  ✗ ${job?.data.url}: ${err.message}`);
 });

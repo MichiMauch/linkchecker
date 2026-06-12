@@ -22,6 +22,9 @@ Sitemap/Seed → Fetch (1× per page) → [ Analyzer: LinkChecker ]
 - **`packages/db`** — Drizzle schema (`runs`, `pages`, `links`, `findings`) and
   a persistence sink. `findings.detail` is JSONB so new analyzers need no
   migration.
+- **`packages/queue`** — shared BullMQ queue + Redis helpers (seed, per-run
+  completion counter, liveness ping). Used by both the dashboard (enqueue) and
+  the worker (consume) so neither app depends on the other.
 - **`apps/worker`** — two entrypoints sharing the same `processPage` core:
   - `run.ts` — single-process crawl (great for dev / small sites)
   - `seed.ts` + `worker.ts` — distributed crawl over BullMQ/Redis (scales to
@@ -58,14 +61,33 @@ npm run crawl -- --sitemap https://your-site.com/sitemap.xml
 
 ### Distributed crawl (very large sites, optional)
 
-For 100k+ URLs across multiple worker processes/machines, use the BullMQ
-worker. This is the only mode that needs Redis:
+By default the dashboard crawls **in-process** — zero infra, but a server
+restart mid-crawl aborts the run. For 100k+ URLs, restart-safety, and
+horizontal scaling, switch to **worker mode**: the dashboard only enqueues
+jobs and separate worker process(es) do the crawling. This is the only mode
+that needs Redis.
+
+From the CLI:
 
 ```bash
 docker compose up -d redis
 npm run seed   -- --sitemap https://your-site.com/sitemap.xml
-npm run worker                # start as many as you like
+npm run worker                # start as many as you like, even on other machines
 ```
+
+From the dashboard (the "Crawl starten" button enqueues instead of crawling
+in-process):
+
+```bash
+export USE_WORKER=true
+export REDIS_URL=redis://localhost:6379
+npm run worker      # in one process/container
+npm run dashboard   # in another
+```
+
+The worker tracks per-run completion in Redis and marks the run `done` when
+the queue drains. If `USE_WORKER` is unset, or Redis is unreachable, the
+dashboard silently falls back to in-process crawling.
 
 ## Why these choices (Next.js + Drupal site)
 

@@ -1,18 +1,22 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { fetchSitemapUrls, runCrawl } from "@linkchecker/core";
+import { fetchSitemapUrls, normalizeUrl, runCrawl } from "@linkchecker/core";
 import { LinkChecker } from "@linkchecker/analyzers";
 import { createRun, createSink } from "@linkchecker/db";
+import { enqueueSeed, pingRedis } from "@linkchecker/queue";
 
 /**
- * Server action: kick off a crawl from the dashboard. Creates the run, starts
- * the crawl in the background (so the request returns immediately), and
- * redirects to the run page where progress updates live.
+ * Server action: kick off a crawl from the dashboard. Creates the run and
+ * either:
+ *  - WORKER MODE (USE_WORKER=true + Redis reachable): enqueues the seed URLs
+ *    and lets the separate worker process(es) do the crawling. Survives a web
+ *    server restart and scales horizontally.
+ *  - IN-PROCESS (default): crawls inside this Node server process. Zero infra,
+ *    great for local/self-hosted; a restart mid-crawl aborts it.
  *
- * NOTE: the crawl runs inside this Node server process. Fine for a
- * self-hosted, long-running server (Coolify/Hetzner). For very large sites or
- * serverless deployments, route the work to the BullMQ worker instead.
+ * Either way the request returns immediately and the run page polls for
+ * progress.
  */
 export async function startCrawl(formData: FormData): Promise<void> {
   const raw = String(formData.get("target") ?? "").trim();
@@ -28,8 +32,19 @@ export async function startCrawl(formData: FormData): Promise<void> {
     sitemapUrl: isSitemap ? target : undefined,
   });
 
-  // Fire-and-forget: do NOT await — let the request return and the page poll.
-  void runInBackground({ runId, target, isSitemap, base, max });
+  const useWorker =
+    (process.env.USE_WORKER === "true" || process.env.USE_WORKER === "1") &&
+    (await pingRedis());
+
+  if (useWorker) {
+    const seedUrls = (isSitemap ? await fetchSitemapUrls(target) : [target])
+      .map((u) => normalizeUrl(u, base))
+      .filter((u): u is string => !!u);
+    await enqueueSeed(runId, seedUrls, base, max);
+  } else {
+    // Fire-and-forget: do NOT await — let the request return and the page poll.
+    void runInBackground({ runId, target, isSitemap, base, max });
+  }
 
   redirect(`/runs/${runId}`);
 }

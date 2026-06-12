@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import type { AnalyzerResult, FetchedPage } from "@linkchecker/core";
 import { getDb } from "./client.js";
 import { findings as findingsTable, links as linksTable, pages, runs } from "./schema.js";
@@ -100,3 +100,22 @@ export function createSink(runId: string) {
 }
 
 export type RunSink = ReturnType<typeof createSink>;
+
+/**
+ * Mark a run complete by counting its rows. Used by the distributed worker,
+ * which has no single in-memory stats object to call finish() with.
+ */
+export async function finalizeRun(runId: string): Promise<void> {
+  const db = await getDb();
+  const [p] = await db.select({ n: count() }).from(pages).where(eq(pages.runId, runId));
+  const [f] = await db.select({ n: count() }).from(findingsTable).where(eq(findingsTable.runId, runId));
+  await db
+    .update(runs)
+    .set({
+      status: "done",
+      finishedAt: new Date(),
+      pagesCrawled: p?.n ?? 0,
+      findingsCount: f?.n ?? 0,
+    })
+    .where(eq(runs.id, runId));
+}

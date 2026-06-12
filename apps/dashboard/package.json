@@ -13,6 +13,7 @@
     "@linkchecker/analyzers": "*",
     "@linkchecker/core": "*",
     "@linkchecker/db": "*",
+    "@linkchecker/queue": "*",
     "drizzle-orm": "^0.38.3",
     "next": "^15.1.4",
     "react": "^19.0.0",
