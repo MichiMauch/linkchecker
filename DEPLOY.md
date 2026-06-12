@@ -1,5 +1,9 @@
 # Deployment (Coolify)
 
+> **Live:** https://linkchecker.mauch.rocks — running **Option B** (full stack,
+> worker mode) as a Coolify Docker Compose resource ("linkchecker-stack" in the
+> "Link Checker" project). Auto-deploys on every push to `main`.
+
 The database is **Turso** (already hosted) — no DB to deploy. Two ways to run:
 
 ## Option A — Web only (in-process crawling)
@@ -36,3 +40,8 @@ Coolify assigns the public domain to the `web` service (`SERVICE_FQDN_WEB_3000`)
 - **Secrets:** never commit the Turso token; set it in Coolify's env settings.
 - **Auth:** the dashboard has no authentication — anyone with the URL can start
   crawls. Put it behind access control if it must not be public.
+- **Compose domains gotcha:** for the compose deployment, the public domain is
+  set per service via Coolify's `docker_compose_domains`
+  (`{"web":{"name":"web","domain":"https://…"}}`), not the `SERVICE_FQDN_*`
+  magic env (which Coolify drops as a value-less compose entry). Without it the
+  web service returns a Traefik 404.
