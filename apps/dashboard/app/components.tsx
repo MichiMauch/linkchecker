@@ -1,32 +1,34 @@
 import Link from "next/link";
-import { startCrawl } from "./actions.js";
+import { detectLang } from "@linkchecker/core";
 import { FixSuggestion } from "./fix-suggestion.js";
 import type { FixView } from "./fix-types.js";
 import type { Finding, Run } from "./lib/queries.js";
 
-export function NewCrawlForm() {
+export { NewCrawlForm } from "./new-crawl-form.js";
+
+/**
+ * Per-language breakdown of findings, by the language of the page each finding
+ * is on (URL path /xx/). Shown only when more than one language is present —
+ * otherwise it adds no information.
+ */
+export function LangBreakdown({ findings }: { findings: Finding[] }) {
+  const counts = new Map<string, number>();
+  for (const f of findings) {
+    const lang = detectLang(f.url) ?? "neutral";
+    counts.set(lang, (counts.get(lang) ?? 0) + 1);
+  }
+  if (counts.size <= 1) return null;
+  const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
   return (
-    <form action={startCrawl} className="newrun">
-      <input
-        type="text"
-        name="target"
-        required
-        placeholder="eure-seite.ch   oder   www.eure-seite.ch   oder   eure-seite.ch/sitemap.xml"
-        aria-label="URL oder Sitemap"
-        autoCapitalize="off"
-        autoCorrect="off"
-        spellCheck={false}
-      />
-      <input
-        type="number"
-        name="max"
-        defaultValue={500}
-        min={1}
-        aria-label="Max. Seiten"
-        title="Maximale Anzahl Seiten"
-      />
-      <button type="submit">Crawl starten</button>
-    </form>
+    <p className="lang-breakdown muted">
+      Nach Sprache:{" "}
+      {sorted.map(([lang, n], i) => (
+        <span key={lang}>
+          {i > 0 ? " · " : ""}
+          <span className="badge status">{lang}</span> {n}
+        </span>
+      ))}
+    </p>
   );
 }
 
@@ -271,15 +273,16 @@ export function SoftErrorTable({
   );
 }
 
-/** Bot-blocked / unreachable links — shown separately, collapsed by default. */
+/** Not-confirmed-dead links — shown separately, collapsed by default. */
 export function UncheckableLinks({ findings }: { findings: Finding[] }) {
   const groups = groupByTarget(findings);
   if (groups.length === 0) return null;
   return (
     <details className="uncheckable">
       <summary>
-        Nicht prüfbar ({groups.length}) — Bot-Schutz (z.B. LinkedIn) oder Timeouts.{" "}
-        <span className="muted">Nicht zwingend kaputt.</span>
+        Nicht prüfbar / sonstige ({groups.length}) — Bot-Schutz (z.B. LinkedIn),
+        Timeouts, Serverfehler (5xx), tote Sprungmarken oder hreflang-Verweise.{" "}
+        <span className="muted">Keine echten 404.</span>
       </summary>
       <div style={{ marginTop: "0.75rem" }}>
         <LinkRows groups={groups} badgeClass="warn" />

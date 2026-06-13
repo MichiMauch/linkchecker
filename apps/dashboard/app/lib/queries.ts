@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ne } from "drizzle-orm";
 import { getAcceptedFixes, getDb, getFixes, schema } from "@linkchecker/db";
 import { toFixView, type FixView } from "../fix-types.js";
 import type { RedirectPair } from "./redirects.js";
@@ -26,14 +26,44 @@ export async function getRun(id: string): Promise<Run | null> {
   return row ?? null;
 }
 
-/** Genuinely broken links (error severity) for a run. */
+/**
+ * Genuinely broken on-page links (error severity). Excludes `dead-sitemap-url`
+ * — those are listed-but-dead sitemap entries, shown in their own section.
+ */
 export async function getBrokenLinks(runId: string): Promise<Finding[]> {
   const db = await getDb();
   return db
     .select()
     .from(findings)
-    .where(and(eq(findings.runId, runId), eq(findings.severity, "error")))
+    .where(
+      and(
+        eq(findings.runId, runId),
+        eq(findings.severity, "error"),
+        ne(findings.type, "dead-sitemap-url"),
+      ),
+    )
     .orderBy(desc(findings.createdAt));
+}
+
+/** URLs the sitemap advertises that return a 4xx (dead listed entries). */
+export async function getDeadSitemapUrls(runId: string): Promise<Finding[]> {
+  const db = await getDb();
+  return db
+    .select()
+    .from(findings)
+    .where(and(eq(findings.runId, runId), eq(findings.type, "dead-sitemap-url")))
+    .orderBy(desc(findings.createdAt));
+}
+
+/** The truncation notice if the sitemap was larger than the crawl cap, else null. */
+export async function getSitemapTruncation(runId: string): Promise<Finding | null> {
+  const db = await getDb();
+  const [row] = await db
+    .select()
+    .from(findings)
+    .where(and(eq(findings.runId, runId), eq(findings.type, "sitemap-truncated")))
+    .limit(1);
+  return row ?? null;
 }
 
 /** Accepted fixes as redirect path-pairs (for the export). */
@@ -84,14 +114,27 @@ export async function getInboundLinkCounts(
   return Object.fromEntries(rows.map((r) => [r.target, r.c]));
 }
 
-/** Links we couldn't verify: bot-blocked (403/999) or unreachable (timeout). */
+/**
+ * Links we couldn't confirm as genuinely dead: bot-blocked (403/999),
+ * unreachable (transient timeout/reset), server errors (5xx), and dead
+ * `#fragment` anchors. None of these are counted as real 404s.
+ */
 export async function getUncheckableLinks(runId: string): Promise<Finding[]> {
   const db = await getDb();
   return db
     .select()
     .from(findings)
     .where(
-      and(eq(findings.runId, runId), inArray(findings.type, ["blocked", "unreachable"])),
+      and(
+        eq(findings.runId, runId),
+        inArray(findings.type, [
+          "blocked",
+          "unreachable",
+          "server-error",
+          "broken-anchor",
+          "broken-hreflang",
+        ]),
+      ),
     )
     .orderBy(desc(findings.createdAt));
 }

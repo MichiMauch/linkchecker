@@ -1,9 +1,15 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { fetchSitemapUrls, normalizeUrl, runCrawl } from "@linkchecker/core";
+import { fetchSitemapUrls, langAllowed, normalizeUrl, parseLangs, runCrawl } from "@linkchecker/core";
 import { defaultAnalyzers } from "@linkchecker/analyzers";
-import { createRun, createSink } from "@linkchecker/db";
+import {
+  auditSitemap,
+  createRun,
+  createSink,
+  finalizeRun,
+  verifyRunBrokenLinks,
+} from "@linkchecker/db";
 import { enqueueSeed, pingRedis } from "@linkchecker/queue";
 
 /**
@@ -27,6 +33,31 @@ export async function startCrawl(formData: FormData): Promise<void> {
   const max = Number(formData.get("max")) || 500;
   const isSitemap = target.toLowerCase().endsWith(".xml");
 
+  // Optional sitemap subset by <lastmod>: newest/oldest N and/or a date window.
+  const subset = String(formData.get("subset") ?? "none");
+  const subsetN = Number(formData.get("subsetN")) || 0;
+  let select: { order: "newest" | "oldest"; limit: number } | undefined;
+  if (isSitemap && subsetN > 0 && (subset === "newest" || subset === "oldest")) {
+    select = { order: subset, limit: subsetN };
+  }
+  const fromRaw = String(formData.get("from") ?? "").trim();
+  const toRaw = String(formData.get("to") ?? "").trim();
+  let dateRange: { from?: string; to?: string } | undefined;
+  if (isSitemap) {
+    const from = fromRaw && !Number.isNaN(Date.parse(fromRaw)) ? fromRaw : undefined;
+    const to = toRaw && !Number.isNaN(Date.parse(toRaw)) ? toRaw : undefined;
+    if (from || to) dateRange = { from, to };
+  }
+  const sitemapOpts = {
+    ...(dateRange ? { filter: dateRange } : {}),
+    ...(select ? { select } : {}),
+  };
+  const isSubset = !!(select || dateRange);
+
+  // Language filter (e.g. "fr, it") — gates seeds and discovered links.
+  const langs = parseLangs(String(formData.get("langs") ?? ""));
+  const langSet = langs.length > 0 ? new Set(langs) : null;
+
   const runId = await createRun({
     baseUrl: base,
     sitemapUrl: isSitemap ? target : undefined,
@@ -37,13 +68,17 @@ export async function startCrawl(formData: FormData): Promise<void> {
     (await pingRedis());
 
   if (useWorker) {
-    const seedUrls = (isSitemap ? await fetchSitemapUrls(target) : [target])
+    const seedUrls = (isSitemap ? await fetchSitemapUrls(target, sitemapOpts) : [target])
       .map((u) => normalizeUrl(u, base))
-      .filter((u): u is string => !!u);
-    await enqueueSeed(runId, seedUrls, base, max);
+      .filter((u): u is string => !!u && langAllowed(u, langSet));
+    await enqueueSeed(runId, seedUrls, base, isSubset ? seedUrls.length : max, {
+      sitemapUrls: isSitemap ? seedUrls : undefined,
+      follow: !isSubset,
+      langs,
+    });
   } else {
     // Fire-and-forget: do NOT await — let the request return and the page poll.
-    void runInBackground({ runId, target, isSitemap, base, max });
+    void runInBackground({ runId, target, isSitemap, base, max, select, dateRange, langs });
   }
 
   redirect(`/runs/${runId}`);
@@ -70,21 +105,47 @@ interface BackgroundOpts {
   isSitemap: boolean;
   base: string;
   max: number;
+  select?: { order: "newest" | "oldest"; limit: number };
+  dateRange?: { from?: string; to?: string };
+  langs?: string[];
 }
 
-async function runInBackground({ runId, target, isSitemap, base, max }: BackgroundOpts): Promise<void> {
+async function runInBackground({
+  runId,
+  target,
+  isSitemap,
+  base,
+  max,
+  select,
+  dateRange,
+  langs,
+}: BackgroundOpts): Promise<void> {
   const sink = createSink(runId);
   try {
-    const startUrls = isSitemap ? await fetchSitemapUrls(target) : [target];
+    const sitemapOpts = {
+      ...(dateRange ? { filter: dateRange } : {}),
+      ...(select ? { select } : {}),
+    };
+    const langSet = langs && langs.length > 0 ? new Set(langs) : null;
+    // Normalize seeds up front so the sitemap audit matches what lands in `pages`.
+    const startUrls = (isSitemap ? await fetchSitemapUrls(target, sitemapOpts) : [target])
+      .map((u) => normalizeUrl(u, base))
+      .filter((u): u is string => !!u && langAllowed(u, langSet));
+    // A sitemap subset = check exactly those pages, no link-following.
+    const isSubset = !!(select || dateRange);
+    const followLinks = !isSubset;
+    const maxPages = isSubset ? startUrls.length : max;
     let pages = 0;
     let findings = 0;
 
-    const stats = await runCrawl({
+    await runCrawl({
       startUrls,
       baseUrl: base,
       analyzers: defaultAnalyzers(),
       concurrency: 10,
-      maxPages: max,
+      maxPages,
+      followLinks,
+      allowedLangs: langs,
       hooks: {
         onPage: async (page) => {
           await sink.page(page);
@@ -98,7 +159,11 @@ async function runInBackground({ runId, target, isSitemap, base, max }: Backgrou
       },
     });
 
-    await sink.finish(stats);
+    // Post-crawl: drop transient false positives, audit the sitemap, then
+    // finalize with an authoritative recount (matches the worker path).
+    await verifyRunBrokenLinks(runId);
+    if (isSitemap) await auditSitemap(runId, startUrls, { cap: maxPages, baseUrl: base });
+    await finalizeRun(runId);
   } catch (err) {
     console.error(`Crawl ${runId} failed:`, err);
     await sink.fail();

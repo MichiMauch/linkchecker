@@ -188,6 +188,24 @@ details.uncheckable > summary {
   text-align: center;
   color: var(--muted);
 }
+.notice {
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.9rem;
+}
+.lang-breakdown {
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.85rem;
+}
+.lang-breakdown .badge {
+  margin-right: 0.15rem;
+}
+.notice.warn {
+  background: #2a2410;
+  color: var(--warn);
+  border: 1px solid #4a3f1a;
+}
 .back {
   display: inline-block;
   margin-bottom: 1rem;
@@ -198,27 +216,54 @@ details.uncheckable > summary {
 .newrun {
   display: flex;
   gap: 0.6rem;
+  align-items: flex-end;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.9rem;
   flex-wrap: wrap;
 }
-.newrun input[type="url"] {
-  flex: 1 1 380px;
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
 }
-.newrun input[type="number"] {
-  width: 100px;
+.field-grow {
+  flex: 1 1 320px;
 }
-.newrun input {
+.field-action {
+  margin-left: auto;
+}
+.field label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+.newrun input,
+.newrun select {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);
   padding: 0.55rem 0.7rem;
   font-size: 0.9rem;
+  color-scheme: dark;
 }
-.newrun input:focus {
+.field-grow input {
+  width: 100%;
+}
+.newrun input[type="number"] {
+  width: 110px;
+}
+.newrun input[type="date"] {
+  width: 160px;
+}
+.newrun select {
+  cursor: pointer;
+}
+.newrun input:focus,
+.newrun select:focus {
   outline: none;
   border-color: var(--accent);
 }

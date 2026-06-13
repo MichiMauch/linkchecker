@@ -6,17 +6,20 @@ import {
   BrokenLinksTable,
   groupByTarget,
   isInternalFinding,
+  LangBreakdown,
   RunSummary,
   SoftErrorTable,
   UncheckableLinks,
 } from "../../components.js";
 import {
   getBrokenLinks,
+  getDeadSitemapUrls,
   getFixViews,
   getInboundLinkCounts,
   getRedirectPairs,
   getRun,
   getRunPageCount,
+  getSitemapTruncation,
   getSoftErrors,
   getUncheckableLinks,
 } from "../../lib/queries.js";
@@ -29,10 +32,12 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   if (!run) notFound();
 
   const running = run.status === "running";
-  const [broken, uncheckable, softErrors, liveCount] = await Promise.all([
+  const [broken, uncheckable, softErrors, deadSitemap, truncation, liveCount] = await Promise.all([
     getBrokenLinks(run.id),
     getUncheckableLinks(run.id),
     getSoftErrors(run.id),
+    getDeadSitemapUrls(run.id),
+    getSitemapTruncation(run.id),
     running ? getRunPageCount(run.id) : Promise.resolve(run.pagesCrawled),
   ]);
   const inbound = await getInboundLinkCounts(run.id, softErrors.map((f) => f.url));
@@ -60,7 +65,18 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
         brokenExternal={externalCount}
       />
 
+      {truncation ? <p className="notice warn">{truncation.message}</p> : null}
+
+      {deadSitemap.length > 0 ? (
+        <>
+          <h2>Tote Sitemap-URLs ({deadSitemap.length})</h2>
+          <p className="muted">In der Sitemap gelistet, liefern aber 4xx — entferne sie oder repariere die Seite.</p>
+          <BrokenLinksTable findings={deadSitemap} emptyLabel="" />
+        </>
+      ) : null}
+
       <h2>Kaputte Links ({brokenCount})</h2>
+      <LangBreakdown findings={broken} />
       <h3>Intern ({internalCount})</h3>
       <BrokenLinksTable
         findings={internalBroken}

@@ -4,6 +4,7 @@ import {
   BrokenLinksTable,
   groupByTarget,
   isInternalFinding,
+  LangBreakdown,
   NewCrawlForm,
   RunsTable,
   RunSummary,
@@ -12,12 +13,14 @@ import {
 } from "./components.js";
 import {
   getBrokenLinks,
+  getDeadSitemapUrls,
   getFixViews,
   getInboundLinkCounts,
   getLatestRun,
   getRecentRuns,
   getRedirectPairs,
   getRunPageCount,
+  getSitemapTruncation,
   getSoftErrors,
   getUncheckableLinks,
 } from "./lib/queries.js";
@@ -50,13 +53,16 @@ function EmptyState() {
 async function LatestRun() {
   const latest = (await getLatestRun())!;
   const running = latest.status === "running";
-  const [broken, uncheckable, softErrors, runs, liveCount] = await Promise.all([
-    getBrokenLinks(latest.id),
-    getUncheckableLinks(latest.id),
-    getSoftErrors(latest.id),
-    getRecentRuns(20),
-    running ? getRunPageCount(latest.id) : Promise.resolve(latest.pagesCrawled),
-  ]);
+  const [broken, uncheckable, softErrors, deadSitemap, truncation, runs, liveCount] =
+    await Promise.all([
+      getBrokenLinks(latest.id),
+      getUncheckableLinks(latest.id),
+      getSoftErrors(latest.id),
+      getDeadSitemapUrls(latest.id),
+      getSitemapTruncation(latest.id),
+      getRecentRuns(20),
+      running ? getRunPageCount(latest.id) : Promise.resolve(latest.pagesCrawled),
+    ]);
   const inbound = await getInboundLinkCounts(latest.id, softErrors.map((f) => f.url));
   const fixes = await getFixViews(latest.id);
   const redirects = await getRedirectPairs(latest.id);
@@ -79,7 +85,18 @@ async function LatestRun() {
         brokenExternal={externalCount}
       />
 
+      {truncation ? <p className="notice warn">{truncation.message}</p> : null}
+
+      {deadSitemap.length > 0 ? (
+        <>
+          <h2>Tote Sitemap-URLs ({deadSitemap.length})</h2>
+          <p className="muted">In der Sitemap gelistet, liefern aber 4xx — entferne sie oder repariere die Seite.</p>
+          <BrokenLinksTable findings={deadSitemap} emptyLabel="" />
+        </>
+      ) : null}
+
       <h2>Kaputte Links ({brokenCount})</h2>
+      <LangBreakdown findings={broken} />
       <h3>Intern ({internalCount})</h3>
       <BrokenLinksTable
         findings={internalBroken}
