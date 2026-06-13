@@ -95,6 +95,7 @@ export class LinkChecker implements Analyzer {
         if (!raw) return;
         const target = normalizeUrl(raw, page.finalUrl);
         if (!target) return; // skips mailto:, tel:, javascript:, bare #fragments
+        if (isCloudflareInternal(target)) return; // /cdn-cgi/… — e.g. obfuscated emails
         let meta = targets.get(target);
         if (!meta) {
           meta = {
@@ -259,6 +260,22 @@ export class LinkChecker implements Analyzer {
       url: sourceUrl,
       detail: { target, missingFragments: missing },
     };
+  }
+}
+
+/**
+ * Cloudflare-internal endpoints under `/cdn-cgi/` are never real site content.
+ * Most importantly `/cdn-cgi/l/email-protection#<hex>` is Cloudflare's email
+ * obfuscation: the served HTML carries it, but `email-decode.min.js` rewrites it
+ * back to the real `mailto:` in the browser. Requesting the bare path 404s, so
+ * without this guard every page with an obfuscated email reports a fake broken
+ * link. Treat the whole prefix like a mailto: and skip it.
+ */
+function isCloudflareInternal(url: string): boolean {
+  try {
+    return new URL(url).pathname.startsWith("/cdn-cgi/");
+  } catch {
+    return false;
   }
 }
 
