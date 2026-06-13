@@ -28,6 +28,8 @@ export interface FetchedPage {
   fetchedAt: Date;
   /** Set when the request failed at the transport level. */
   error?: string;
+  /** Underlying error code (e.g. ENOTFOUND, ETIMEDOUT) — drives dead-host vs transient classification. */
+  errorCode?: string;
 }
 
 /** A single thing an analyzer wants to report about a page. */
@@ -75,6 +77,8 @@ export interface StatusResult {
   ok: boolean;
   redirectChain: string[];
   error?: string;
+  /** Underlying error code (e.g. ENOTFOUND, ETIMEDOUT) when the request failed. */
+  errorCode?: string;
 }
 
 /** Shared services the crawler exposes to every analyzer. */
@@ -84,6 +88,12 @@ export interface CrawlContext {
   isInternal(url: string): boolean;
   /** Cached HEAD→GET status check — safe to call for the same URL many times. */
   checkStatus(url: string): Promise<StatusResult>;
+  /**
+   * Cached set of anchor targets (`id`/`name`) on a page, for validating
+   * `#fragment` links. Returns null if the page isn't HTML or can't be read.
+   * Optional — present only when the crawler wires up fragment checking.
+   */
+  getAnchors?(url: string): Promise<Set<string> | null>;
   runId?: string;
 }
 

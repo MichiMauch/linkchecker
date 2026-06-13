@@ -1,4 +1,5 @@
 import { request } from "undici";
+import { DEFAULT_UA } from "./fetcher.js";
 
 export interface ProbeResult {
   /** Status returned for a URL that definitely does not exist. */
@@ -44,7 +45,9 @@ export class SoftErrorProbe {
         headersTimeout: timeout,
         bodyTimeout: timeout,
         headers: {
-          "user-agent": this.opts.userAgent ?? "LinkCheckerBot/0.1",
+          // Match the real fetch identity — a UA-sniffing server may serve a
+          // different 404 template to bots, which would break the similarity match.
+          "user-agent": this.opts.userAgent ?? DEFAULT_UA,
           accept: "text/html,application/xhtml+xml",
         },
       });

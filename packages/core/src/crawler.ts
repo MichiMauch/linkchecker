@@ -1,4 +1,6 @@
+import { AnchorChecker } from "./anchor-checker.js";
 import { fetchPage, isHtmlType, type FetchOptions } from "./fetcher.js";
+import { langAllowed } from "./lang.js";
 import { RobotsGate } from "./robots.js";
 import { StatusChecker } from "./status-checker.js";
 import { hostOf, Throttle } from "./throttle.js";
@@ -57,6 +59,18 @@ export interface CrawlConfig {
   analyzers: Analyzer[];
   concurrency?: number;
   maxPages?: number;
+  /**
+   * Follow internal links discovered on each page (frontier expansion).
+   * Default true. Set false to crawl ONLY the start URLs — e.g. when checking
+   * a hand-picked subset of a sitemap ("newest 100") and nothing beyond it.
+   */
+  followLinks?: boolean;
+  /**
+   * Restrict the crawl to these languages (lowercased codes, e.g. ["fr","it"]).
+   * Language is read from the URL path (`/fr/…`); language-neutral URLs always
+   * pass. Empty/absent = all languages. Gates both seeds and discovered links.
+   */
+  allowedLangs?: string[];
   fetchOptions?: FetchOptions;
   politeness?: PolitenessConfig;
   hooks?: CrawlHooks;
@@ -80,6 +94,7 @@ export async function runCrawl(config: CrawlConfig): Promise<CrawlStats> {
     analyzers,
     concurrency = 10,
     maxPages = Number.POSITIVE_INFINITY,
+    followLinks = true,
     fetchOptions = {},
     hooks = {},
   } = config;
@@ -95,19 +110,26 @@ export async function runCrawl(config: CrawlConfig): Promise<CrawlStats> {
       ? null
       : new RobotsGate({ userAgent: pol.robotsUserAgent, fetch: fetchOptions });
   const statusChecker = new StatusChecker(fetchOptions, throttle);
+  const anchorChecker = new AnchorChecker(fetchOptions, throttle);
   const ctx: CrawlContext = {
     baseUrl: base.toString(),
     isInternal: (u) => isInternalUrl(u, base),
     checkStatus: (u) => statusChecker.check(u),
+    getAnchors: (u) => anchorChecker.get(u),
   };
 
   const seen = new Set<string>();
   const queue: string[] = [];
   const stats: CrawlStats = { pages: 0, findings: 0, skipped: 0 };
+  const langs =
+    config.allowedLangs && config.allowedLangs.length > 0
+      ? new Set(config.allowedLangs.map((l) => l.toLowerCase()))
+      : null;
 
   const enqueue = (raw: string): void => {
     const n = normalizeUrl(raw, base.toString());
     if (!n || seen.has(n)) return;
+    if (!langAllowed(n, langs)) return;
     seen.add(n);
     queue.push(n);
   };
@@ -150,8 +172,10 @@ export async function runCrawl(config: CrawlConfig): Promise<CrawlStats> {
     for (const { analyzer, result } of results) {
       stats.findings += result.findings.length;
       await hooks.onResult?.(page, result, analyzer);
-      for (const next of result.discoveredUrls) {
-        if (ctx.isInternal(next)) enqueue(next);
+      if (followLinks) {
+        for (const next of result.discoveredUrls) {
+          if (ctx.isInternal(next)) enqueue(next);
+        }
       }
     }
   }
