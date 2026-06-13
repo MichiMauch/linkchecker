@@ -8,6 +8,10 @@ export interface CrawlJob {
   runId: string;
   url: string;
   baseUrl: string;
+  /** Follow internal links found on this page. Default true (omitted = true). */
+  follow?: boolean;
+  /** Restrict discovered links to these languages (lowercased). Empty/absent = all. */
+  langs?: string[];
 }
 
 let _connection: Redis | undefined;
@@ -34,6 +38,8 @@ export const keys = {
   crawled: (runId: string) => `lc:crawled:${runId}`,
   max: (runId: string) => `lc:max:${runId}`,
   done: (runId: string) => `lc:done:${runId}`,
+  /** Full set of URLs a sitemap advertised — read once at finalize for the audit. */
+  sitemap: (runId: string) => `lc:sitemap:${runId}`,
 };
 
 /** Quick liveness check — is Redis actually reachable right now? */
@@ -57,22 +63,49 @@ export async function pingRedis(timeoutMs = 1500): Promise<boolean> {
   }
 }
 
+export interface EnqueueSeedOptions {
+  /**
+   * When these are a sitemap's URLs, the FULL listed set is stored for the
+   * post-run audit (dead-URL + truncation check) before `max` capping is
+   * applied to what actually gets crawled.
+   */
+  sitemapUrls?: string[];
+  /** Follow internal links from seed pages. Default true; false = crawl only the seeds. */
+  follow?: boolean;
+  /** Restrict discovered links to these languages (lowercased). Stored on each job. */
+  langs?: string[];
+}
+
 /**
  * Seed a run into the queue: register the page limit, mark seed URLs as seen,
  * set the pending-job counter, then enqueue. Counter is set BEFORE enqueuing so
  * a fast worker can't drive it to zero prematurely.
+ *
+ * Seeds are capped at `max` so a huge sitemap behaves the same here as in the
+ * in-process crawler (both treat `max` as a hard page budget). The uncapped
+ * count is returned as `total` so the caller can warn about truncation.
  */
 export async function enqueueSeed(
   runId: string,
   urls: string[],
   baseUrl: string,
   max: number,
-): Promise<number> {
+  opts: EnqueueSeedOptions = {},
+): Promise<{ enqueued: number; total: number }> {
   const c = connection();
   const q = crawlQueue();
 
+  // Persist the full sitemap set (in chunks) for the finalize-time audit.
+  if (opts.sitemapUrls && opts.sitemapUrls.length > 0) {
+    for (let i = 0; i < opts.sitemapUrls.length; i += 1000) {
+      await c.sadd(keys.sitemap(runId), ...opts.sitemapUrls.slice(i, i + 1000));
+    }
+    await c.expire(keys.sitemap(runId), 86_400);
+  }
+
+  const capped = Number.isFinite(max) ? urls.slice(0, max) : urls;
   const fresh: string[] = [];
-  for (const url of urls) {
+  for (const url of capped) {
     if ((await c.sadd(keys.seen(runId), url)) === 1) fresh.push(url);
   }
 
@@ -80,8 +113,19 @@ export async function enqueueSeed(
   await c.set(keys.crawled(runId), "0");
   await c.set(keys.pending(runId), String(fresh.length));
 
+  const follow = opts.follow ?? true;
+  const langs = opts.langs && opts.langs.length > 0 ? opts.langs : undefined;
   for (const url of fresh) {
-    await q.add("crawl", { runId, url, baseUrl }, { removeOnComplete: true, removeOnFail: 1000 });
+    await q.add(
+      "crawl",
+      { runId, url, baseUrl, follow, langs },
+      { removeOnComplete: true, removeOnFail: 1000 },
+    );
   }
-  return fresh.length;
+  return { enqueued: fresh.length, total: urls.length };
+}
+
+/** Read the stored sitemap URL set for a run (empty if not a sitemap crawl). */
+export async function getSitemapUrls(runId: string): Promise<string[]> {
+  return connection().smembers(keys.sitemap(runId));
 }

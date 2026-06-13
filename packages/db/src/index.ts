@@ -4,6 +4,8 @@ export {
   createRun,
   createSink,
   finalizeRun,
+  verifyRunBrokenLinks,
+  auditSitemap,
   getValidPages,
   getAnchorTexts,
   getCachedFix,

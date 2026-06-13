@@ -1,5 +1,5 @@
-import { and, count, eq } from "drizzle-orm";
-import type { AnalyzerResult, FetchedPage } from "@linkchecker/core";
+import { and, count, eq, inArray } from "drizzle-orm";
+import { checkStatus, type AnalyzerResult, type FetchOptions, type FetchedPage } from "@linkchecker/core";
 import { getDb } from "./client.js";
 import {
   findings as findingsTable,
@@ -126,6 +126,162 @@ export async function finalizeRun(runId: string): Promise<void> {
       findingsCount: f?.n ?? 0,
     })
     .where(eq(runs.id, runId));
+}
+
+// --- Verify pass: re-confirm claimed-broken links before reporting --------
+
+/**
+ * Finding types worth re-checking: anything that could be a transient false
+ * positive. `blocked` (bot shields) is excluded — it won't change on a retry.
+ */
+const VERIFY_TYPES = ["broken-link", "dead-host", "server-error", "unreachable"] as const;
+
+/**
+ * After a crawl, re-check every link that was reported broken — once, fresh,
+ * with retries — and drop the ones that now respond OK. This is the safety net
+ * against flaky timeouts / transient 5xx that would otherwise be reported as
+ * real 404s. Updates the affected `links` rows and recomputes `findingsCount`.
+ *
+ * Returns how many distinct targets were re-checked and how many findings were
+ * cleared as transient.
+ */
+export async function verifyRunBrokenLinks(
+  runId: string,
+  opts: { fetch?: FetchOptions; concurrency?: number } = {},
+): Promise<{ rechecked: number; cleared: number }> {
+  const db = await getDb();
+  const rows = await db
+    .select()
+    .from(findingsTable)
+    .where(
+      and(
+        eq(findingsTable.runId, runId),
+        eq(findingsTable.analyzer, "link-checker"),
+        inArray(findingsTable.type, [...VERIFY_TYPES]),
+      ),
+    );
+
+  // Group findings by their target URL so each target is fetched only once.
+  const byTarget = new Map<string, string[]>(); // target -> finding ids
+  for (const f of rows) {
+    const target = (f.detail as { target?: unknown } | null)?.target;
+    if (typeof target !== "string") continue;
+    const ids = byTarget.get(target) ?? [];
+    ids.push(f.id);
+    byTarget.set(target, ids);
+  }
+
+  const targets = [...byTarget.keys()];
+  if (targets.length === 0) return { rechecked: 0, cleared: 0 };
+
+  const fetchOpts: FetchOptions = { retries: 2, ...opts.fetch };
+  let cleared = 0;
+  let cursor = 0;
+  const workers = Math.min(opts.concurrency ?? 5, targets.length);
+
+  await Promise.all(
+    Array.from({ length: workers }, async () => {
+      while (cursor < targets.length) {
+        const target = targets[cursor++]!;
+        const res = await checkStatus(target, fetchOpts);
+        if (res.ok) {
+          const ids = byTarget.get(target)!;
+          await db.delete(findingsTable).where(inArray(findingsTable.id, ids));
+          await db
+            .update(linksTable)
+            .set({ ok: true, status: res.status, error: null })
+            .where(and(eq(linksTable.runId, runId), eq(linksTable.targetUrl, target)));
+          cleared += ids.length;
+        } else {
+          // Still bad — keep the finding but sync the link row to the fresh status.
+          await db
+            .update(linksTable)
+            .set({ ok: false, status: res.status })
+            .where(and(eq(linksTable.runId, runId), eq(linksTable.targetUrl, target)));
+        }
+      }
+    }),
+  );
+
+  if (cleared > 0) {
+    const [f] = await db
+      .select({ n: count() })
+      .from(findingsTable)
+      .where(eq(findingsTable.runId, runId));
+    await db.update(runs).set({ findingsCount: f?.n ?? 0 }).where(eq(runs.id, runId));
+  }
+
+  return { rechecked: targets.length, cleared };
+}
+
+// --- Sitemap audit: dead listed URLs + truncation notice ------------------
+
+/**
+ * Cross-check the URLs a sitemap advertised against what the crawl actually
+ * fetched, and record two sitemap-specific signals (analyzer `"sitemap"`):
+ *
+ *  - `dead-sitemap-url` (error): a URL listed in the sitemap that returned a
+ *    4xx — you're advertising a dead page to search engines. High-confidence
+ *    only (4xx); transient 5xx/timeouts are left out to avoid false positives.
+ *  - `sitemap-truncated` (warning): the sitemap listed more URLs than the page
+ *    cap allowed, so the crawl only covered part of it — raise `max` to finish.
+ *
+ * Idempotent: clears prior `"sitemap"` findings first. Does NOT recompute
+ * `findingsCount`; callers finalize with {@link finalizeRun}, which recounts.
+ */
+export async function auditSitemap(
+  runId: string,
+  sitemapUrls: string[],
+  opts: { cap: number; baseUrl: string },
+): Promise<{ dead: number; truncated: boolean }> {
+  const db = await getDb();
+  await db
+    .delete(findingsTable)
+    .where(and(eq(findingsTable.runId, runId), eq(findingsTable.analyzer, "sitemap")));
+
+  if (sitemapUrls.length === 0) return { dead: 0, truncated: false };
+
+  const listed = new Set(sitemapUrls);
+  const notOk = await db
+    .select({ url: pages.url, status: pages.status, error: pages.error })
+    .from(pages)
+    .where(and(eq(pages.runId, runId), eq(pages.ok, false)));
+  const dead = notOk.filter(
+    (p) => listed.has(p.url) && typeof p.status === "number" && p.status >= 400 && p.status < 500,
+  );
+
+  const truncated = Number.isFinite(opts.cap) && sitemapUrls.length > opts.cap;
+
+  const toInsert = [
+    ...dead.map((p) => ({
+      runId,
+      analyzer: "sitemap",
+      type: "dead-sitemap-url",
+      severity: "error",
+      message: `In Sitemap gelistet, aber HTTP ${p.status}: ${p.url}`,
+      url: p.url,
+      detail: { target: p.url, status: p.status, internal: true, error: p.error } as Record<
+        string,
+        unknown
+      >,
+    })),
+    ...(truncated
+      ? [
+          {
+            runId,
+            analyzer: "sitemap",
+            type: "sitemap-truncated",
+            severity: "warning",
+            message: `Sitemap enthält ${sitemapUrls.length} URLs, der Crawl deckte nur ${opts.cap} ab — erhöhe „max", um alle zu prüfen.`,
+            url: opts.baseUrl,
+            detail: { listed: sitemapUrls.length, cap: opts.cap } as Record<string, unknown>,
+          },
+        ]
+      : []),
+  ];
+
+  if (toInsert.length > 0) await db.insert(findingsTable).values(toInsert);
+  return { dead: dead.length, truncated };
 }
 
 // --- Phase 2: fix suggestions for broken internal links -------------------
