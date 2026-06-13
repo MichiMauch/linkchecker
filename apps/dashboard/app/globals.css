@@ -198,6 +198,45 @@ details.uncheckable > summary {
   margin: 0.5rem 0 0;
   font-size: 0.8rem;
 }
+.inspect-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.85rem;
+}
+.inspect-summary .warn {
+  color: var(--warn);
+}
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.link-btn:hover {
+  filter: brightness(1.1);
+}
+.lang-checks {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.5rem 0.1rem;
+}
+.lang-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.lang-check input {
+  cursor: pointer;
+}
 .lang-breakdown {
   margin: -0.25rem 0 0.75rem;
   font-size: 0.85rem;

@@ -1,7 +1,16 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { langAllowed, normalizeUrl, parseLangs, resolveSiteSitemap, runCrawl } from "@linkchecker/core";
+import {
+  detectLang,
+  fetchSitemap,
+  langAllowed,
+  loadRobots,
+  normalizeUrl,
+  parseLangs,
+  resolveSiteSitemap,
+  runCrawl,
+} from "@linkchecker/core";
 import { defaultAnalyzers } from "@linkchecker/analyzers";
 import {
   auditSitemap,
@@ -104,6 +113,66 @@ async function resolveSeeds({
     .map((u) => normalizeUrl(u, base))
     .filter((u): u is string => !!u && langAllowed(u, langSet));
   return { seedUrls, isSitemapCrawl };
+}
+
+export interface SiteInspection {
+  /** A usable sitemap was found (robots.txt entry or /sitemap.xml). */
+  found: boolean;
+  /** The (normalized, scheme-prepended) target that was inspected. */
+  target: string;
+  /** How many sitemap documents were discovered. */
+  sources: number;
+  /** Languages detected from the sitemap URLs / pages (may be empty). */
+  languages: string[];
+  /** Total page URLs, when cheaply known (null for the robots.txt fast path). */
+  total: number | null;
+}
+
+/**
+ * Step 1 of the crawl wizard: inspect a target before crawling. For a domain we
+ * read robots.txt — its `Sitemap:` entries reveal the per-language sitemaps
+ * (languages derived from their URLs, no full fetch needed). Direct `.xml` and
+ * the `/sitemap.xml` fallback are fetched once to confirm and count. The UI uses
+ * this to show what was found and offer matching options before starting.
+ */
+export async function inspectSite(rawTarget: string): Promise<SiteInspection> {
+  const target = normalizeInputUrl(rawTarget);
+  if (!target) return { found: false, target: "", sources: 0, languages: [], total: null };
+
+  const distinct = (urls: string[]): string[] =>
+    [...new Set(urls.map((u) => detectLang(u)).filter((l): l is string => !!l))].sort();
+
+  // A direct sitemap URL: fetch once to confirm and count.
+  if (/\.xml(\.gz)?(\?|#|$)/i.test(target)) {
+    const r = await fetchSitemap(target);
+    return { found: r.urls.length > 0, target, sources: 1, languages: distinct(r.urls), total: r.urls.length };
+  }
+
+  let origin: string;
+  try {
+    origin = new URL(target).origin;
+  } catch {
+    return { found: false, target, sources: 0, languages: [], total: null };
+  }
+
+  // Fast path: robots.txt lists the (per-language) sitemaps.
+  const robots = await loadRobots(origin);
+  if (robots.sitemaps.length > 0) {
+    return {
+      found: true,
+      target,
+      sources: robots.sitemaps.length,
+      languages: distinct(robots.sitemaps),
+      total: null,
+    };
+  }
+
+  // Fallback: probe /sitemap.xml.
+  const r = await fetchSitemap(new URL("/sitemap.xml", origin).toString());
+  if (r.urls.length > 0) {
+    return { found: true, target, sources: 1, languages: distinct(r.urls), total: r.urls.length };
+  }
+  return { found: false, target, sources: 0, languages: [], total: null };
 }
 
 /**
