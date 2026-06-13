@@ -2,6 +2,8 @@ import { gunzipSync } from "node:zlib";
 import { request } from "undici";
 import { XMLParser } from "fast-xml-parser";
 import { DEFAULT_UA } from "./fetcher.js";
+import { langAllowed } from "./lang.js";
+import { loadRobots } from "./robots.js";
 
 /** Pick a subset of sitemap entries by `<lastmod>` recency. */
 export interface SitemapSelect {
@@ -191,6 +193,73 @@ export async function fetchSitemapUrls(
     console.warn(`[sitemap] skipped ${e.url}: ${e.error}`);
   }
   return urls;
+}
+
+export interface ResolveSitemapOptions extends SitemapOptions {
+  /** Only fetch language-matching sitemaps (by source URL path /xx/). Empty = all. */
+  langs?: string[];
+}
+
+export interface ResolvedSitemap extends SitemapResult {
+  /** The sitemap document URLs that were actually used (from robots.txt or fallback). */
+  sources: string[];
+}
+
+/**
+ * Resolve a target into page URLs, accepting either a sitemap URL OR a bare
+ * site/domain:
+ *  - target ends in `.xml` → use it directly.
+ *  - otherwise → read robots.txt for `Sitemap:` entries (covers per-language
+ *    sitemaps); fall back to `<origin>/sitemap.xml`.
+ *
+ * All discovered sitemaps are flattened and merged, then `filter` (date window)
+ * and `select` (newest/oldest) are applied across the merged set. When `langs`
+ * is set, only language-matching source sitemaps are fetched (so "domain + fr"
+ * pulls just `/fr/sitemap.xml`). Returns `urls: []` when nothing is found — the
+ * caller can then fall back to a plain URL crawl.
+ */
+export async function resolveSiteSitemap(
+  target: string,
+  opts: ResolveSitemapOptions = {},
+): Promise<ResolvedSitemap> {
+  const sources = await sitemapSourcesFor(target, opts);
+  const merged = new Map<string, string | undefined>();
+  const errors: Array<{ url: string; error: string }> = [];
+  let sitemapsFetched = 0;
+
+  for (const src of sources) {
+    const r = await fetchSitemap(src, { maxDepth: opts.maxDepth, userAgent: opts.userAgent });
+    sitemapsFetched += r.sitemapsFetched;
+    errors.push(...r.errors);
+    for (const e of r.entries) if (!merged.has(e.loc)) merged.set(e.loc, e.lastmod);
+  }
+
+  let entries: SitemapEntry[] = [...merged].map(([loc, lastmod]) => ({ loc, lastmod }));
+  if (opts.filter && (opts.filter.from || opts.filter.to)) {
+    entries = filterSitemapEntriesByDate(entries, opts.filter);
+  }
+  if (opts.select) entries = selectSitemapEntries(entries, opts.select);
+  const limit = opts.limit ?? Number.POSITIVE_INFINITY;
+  return { urls: entries.map((e) => e.loc).slice(0, limit), entries, errors, sitemapsFetched, sources };
+}
+
+/** Determine which sitemap document(s) to read for a target (URL or domain). */
+async function sitemapSourcesFor(target: string, opts: ResolveSitemapOptions): Promise<string[]> {
+  if (/\.xml(\.gz)?(\?|#|$)/i.test(target)) return [target];
+  let origin: string;
+  try {
+    origin = new URL(target).origin;
+  } catch {
+    return [];
+  }
+  const robots = await loadRobots(origin, { userAgent: opts.userAgent });
+  let sources =
+    robots.sitemaps.length > 0
+      ? robots.sitemaps
+      : [new URL("/sitemap.xml", origin).toString()];
+  const langs = opts.langs && opts.langs.length > 0 ? new Set(opts.langs) : null;
+  if (langs) sources = sources.filter((s) => langAllowed(s, langs));
+  return sources;
 }
 
 /** Fetch a sitemap document, following redirects and gunzipping when needed. */

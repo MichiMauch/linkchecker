@@ -194,6 +194,10 @@ details.uncheckable > summary {
   margin: 0.5rem 0 1rem;
   font-size: 0.9rem;
 }
+.form-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+}
 .lang-breakdown {
   margin: -0.25rem 0 0.75rem;
   font-size: 0.85rem;
