@@ -17,6 +17,7 @@ import {
   getFixViews,
   getInboundLinkCounts,
   getLatestRun,
+  getPlaceholderLinks,
   getRecentRuns,
   getRedirectPairs,
   getRunPageCount,
@@ -53,12 +54,13 @@ function EmptyState() {
 async function LatestRun() {
   const latest = (await getLatestRun())!;
   const running = latest.status === "running";
-  const [broken, uncheckable, softErrors, deadSitemap, truncation, runs, liveCount] =
+  const [broken, uncheckable, softErrors, deadSitemap, placeholders, truncation, runs, liveCount] =
     await Promise.all([
       getBrokenLinks(latest.id),
       getUncheckableLinks(latest.id),
       getSoftErrors(latest.id),
       getDeadSitemapUrls(latest.id),
+      getPlaceholderLinks(latest.id),
       getSitemapTruncation(latest.id),
       getRecentRuns(20),
       running ? getRunPageCount(latest.id) : Promise.resolve(latest.pagesCrawled),
@@ -106,6 +108,17 @@ async function LatestRun() {
       />
       <h3>Extern ({externalCount})</h3>
       <BrokenLinksTable findings={externalBroken} emptyLabel="Keine externen kaputten Links." />
+
+      {placeholders.length > 0 ? (
+        <>
+          <h2>Verdächtige Platzhalter-Links ({groupByTarget(placeholders).length})</h2>
+          <p className="muted">
+            URLs mit <code>undefined</code>/<code>null</code> oder unaufgelösten Templates — fast
+            immer ein Frontend-Bug der Zielseite, nicht einzelne Inhaltsfehler.
+          </p>
+          <BrokenLinksTable findings={placeholders} emptyLabel="" />
+        </>
+      ) : null}
 
       {redirects.length > 0 ? (
         <>

@@ -141,7 +141,14 @@ export class LinkChecker implements Analyzer {
       });
 
       if (!status.ok) {
-        const klass = classify(status.status, status.error, status.errorCode);
+        const klass = looksLikePlaceholder(target)
+          ? {
+              type: "placeholder-link",
+              severity: "error" as const,
+              label: (t: string, s: number) =>
+                `Platzhalter-/ungültige URL (HTTP ${s || "ERR"}): ${t}`,
+            }
+          : classify(status.status, status.error, status.errorCode);
         findings.push({
           analyzer: this.name,
           type: klass.type,
@@ -261,6 +268,31 @@ export class LinkChecker implements Analyzer {
       detail: { target, missingFragments: missing },
     };
   }
+}
+
+/**
+ * A target that looks like a frontend templating bug rather than a real URL:
+ * an `undefined`/`null` path segment (e.g. `/undefined/node/undefined` from
+ * `/${locale}/node/${id}` with missing values) or an unresolved template
+ * literal (`${…}`, `{{…}}`, `[object Object]`). These are genuine defects, but
+ * separating them from ordinary 404s makes both lists easier to act on.
+ */
+function looksLikePlaceholder(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  let decoded = u.pathname + u.search;
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // keep raw if it isn't valid percent-encoding
+  }
+  if (/\$\{|\{\{|\}\}|\[object/i.test(decoded)) return true;
+  const segments = u.pathname.split("/").filter(Boolean).map((s) => s.toLowerCase());
+  return segments.includes("undefined") || segments.includes("null");
 }
 
 /**

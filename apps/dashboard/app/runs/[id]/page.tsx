@@ -16,6 +16,7 @@ import {
   getDeadSitemapUrls,
   getFixViews,
   getInboundLinkCounts,
+  getPlaceholderLinks,
   getRedirectPairs,
   getRun,
   getRunPageCount,
@@ -32,14 +33,16 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
   if (!run) notFound();
 
   const running = run.status === "running";
-  const [broken, uncheckable, softErrors, deadSitemap, truncation, liveCount] = await Promise.all([
-    getBrokenLinks(run.id),
-    getUncheckableLinks(run.id),
-    getSoftErrors(run.id),
-    getDeadSitemapUrls(run.id),
-    getSitemapTruncation(run.id),
-    running ? getRunPageCount(run.id) : Promise.resolve(run.pagesCrawled),
-  ]);
+  const [broken, uncheckable, softErrors, deadSitemap, placeholders, truncation, liveCount] =
+    await Promise.all([
+      getBrokenLinks(run.id),
+      getUncheckableLinks(run.id),
+      getSoftErrors(run.id),
+      getDeadSitemapUrls(run.id),
+      getPlaceholderLinks(run.id),
+      getSitemapTruncation(run.id),
+      running ? getRunPageCount(run.id) : Promise.resolve(run.pagesCrawled),
+    ]);
   const inbound = await getInboundLinkCounts(run.id, softErrors.map((f) => f.url));
   const fixes = await getFixViews(run.id);
   const redirects = await getRedirectPairs(run.id);
@@ -86,6 +89,17 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
       />
       <h3>Extern ({externalCount})</h3>
       <BrokenLinksTable findings={externalBroken} emptyLabel="Keine externen kaputten Links." />
+
+      {placeholders.length > 0 ? (
+        <>
+          <h2>Verdächtige Platzhalter-Links ({groupByTarget(placeholders).length})</h2>
+          <p className="muted">
+            URLs mit <code>undefined</code>/<code>null</code> oder unaufgelösten Templates — fast
+            immer ein Frontend-Bug der Zielseite, nicht einzelne Inhaltsfehler.
+          </p>
+          <BrokenLinksTable findings={placeholders} emptyLabel="" />
+        </>
+      ) : null}
 
       {redirects.length > 0 ? (
         <>

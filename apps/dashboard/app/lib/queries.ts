@@ -28,7 +28,7 @@ export async function getRun(id: string): Promise<Run | null> {
 
 /**
  * Genuinely broken on-page links (error severity). Excludes `dead-sitemap-url`
- * — those are listed-but-dead sitemap entries, shown in their own section.
+ * and `placeholder-link` — both have their own sections.
  */
 export async function getBrokenLinks(runId: string): Promise<Finding[]> {
   const db = await getDb();
@@ -40,8 +40,19 @@ export async function getBrokenLinks(runId: string): Promise<Finding[]> {
         eq(findings.runId, runId),
         eq(findings.severity, "error"),
         ne(findings.type, "dead-sitemap-url"),
+        ne(findings.type, "placeholder-link"),
       ),
     )
+    .orderBy(desc(findings.createdAt));
+}
+
+/** Broken links whose URL looks like a templating bug (undefined/null/${…}). */
+export async function getPlaceholderLinks(runId: string): Promise<Finding[]> {
+  const db = await getDb();
+  return db
+    .select()
+    .from(findings)
+    .where(and(eq(findings.runId, runId), eq(findings.type, "placeholder-link")))
     .orderBy(desc(findings.createdAt));
 }
 
