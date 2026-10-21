@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Next.js dashboard — lean standalone image. Build context = repo root.
 
-FROM node:22-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 
 # --- build: install + produce .next/standalone in one stage so that whatever
