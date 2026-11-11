@@ -220,7 +220,7 @@ function detailNumber(detail: Record<string, unknown> | null, key: string): numb
 const METHOD_LABEL: Record<string, string> = {
   template: "404-Vorlage",
   heuristic: "Heuristik",
-  llm: "KI (gpt-5-mini)",
+  llm: "KI (Claude)",
 };
 
 /** Pages that return 200 but are really "not found" templates. */

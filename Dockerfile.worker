@@ -6,6 +6,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY packages/core/package.json ./packages/core/
+COPY packages/ai/package.json ./packages/ai/
 COPY packages/analyzers/package.json ./packages/analyzers/
 COPY packages/db/package.json ./packages/db/
 COPY packages/queue/package.json ./packages/queue/

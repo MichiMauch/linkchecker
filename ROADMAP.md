@@ -21,12 +21,12 @@ Raised 2026-06-12 while scoping the AI features (Soft-404 + fix suggestions).
 ## AI features
 
 - **Phase 1 — Soft-404 detection** (in progress): pages that return HTTP 200 but
-  are "not found" templates. Probe + heuristics (deterministic) + OpenAI
-  gpt-5-mini fallback for the ambiguous band (gpt-5.1-mini was requested but is
-  not available on the account; gpt-5-mini works and returns clean JSON).
+  are "not found" templates. Probe + heuristics (deterministic) + Claude
+  (ANTHROPIC_MODEL, default claude-haiku-5-5) fallback for the ambiguous band,
+  structured output via a forced tool call.
 - **Phase 2 — Fix suggestions** (done): broken internal links get an on-demand
-  "Fix vorschlagen" button. Lexical prefilter → trivial-match shortcut → gpt-5-
-  mini ranks one candidate from the known-good URL set. Accept/reject stored in
+  "Fix vorschlagen" button. Lexical prefilter → trivial-match shortcut → Claude
+  ranks one candidate from the known-good URL set. Accept/reject stored in
   `link_fixes` (feeds Phase 3). Returns "no match" rather than inventing.
 - **Phase 3 — Fix export** (done as redirect export): accepted fixes export as
   Next.js / nginx / Apache / Netlify / CSV redirect configs (copy or download).
